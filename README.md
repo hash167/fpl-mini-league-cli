@@ -31,19 +31,12 @@ Example:
 
 ## Find Your Team ID
 
-Use one of these methods:
-
-1. In browser URL:
+In browser URL:
    - Open your team on Fantasy Premier League website.
    - URL usually looks like:
      - `https://fantasy.premierleague.com/entry/1234567/event/1`
    - Your team ID is the number after `/entry/` (here: `1234567`).
-
-2. Via FPL API:
-   - Open:
-     - `https://fantasy.premierleague.com/api/entry/<YOUR_ID>/`
-   - Replace `<YOUR_ID>` with candidate numbers if you already have an idea.
-   - If valid, API returns your entry JSON.
+   
 
 ## Navigation
 
