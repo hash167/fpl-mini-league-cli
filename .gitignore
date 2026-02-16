@@ -1,0 +1,24 @@
+# Ignore everything by default
+*
+
+# Keep git config files
+!.gitignore
+!.gitattributes
+
+# Keep source
+!src/
+!src/**
+
+# Keep project/build definitions
+!README.md
+!build.gradle.kts
+!settings.gradle.kts
+!gradle.properties
+!gradlew
+!gradlew.bat
+
+# Keep Gradle wrapper files required for reproducible builds
+!gradle/
+!gradle/wrapper/
+!gradle/wrapper/gradle-wrapper.jar
+!gradle/wrapper/gradle-wrapper.properties
