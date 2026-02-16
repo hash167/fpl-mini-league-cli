@@ -67,3 +67,7 @@ fpl-live-leagues YOUR_TEAM_ID
 ```bash
 ./gradlew test
 ```
+
+## Developer Notes
+
+- Kotlin concepts used in this project: `docs/kotlin-concepts.md`
