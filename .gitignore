@@ -9,6 +9,10 @@
 !src/
 !src/**
 
+# Keep docs
+!docs/
+!docs/**
+
 # Keep project/build definitions
 !README.md
 !build.gradle.kts
