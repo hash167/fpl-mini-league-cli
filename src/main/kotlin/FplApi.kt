@@ -2,20 +2,28 @@ import java.net.URI
 import java.net.http.HttpClient
 import java.net.http.HttpRequest
 import java.net.http.HttpResponse
+import java.time.Duration
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.jsonObject
 
-private const val FPL_BASE_URL = "https://fantasy.premierleague.com/api"
+const val DEFAULT_FPL_BASE_URL = "https://fantasy.premierleague.com/api"
 
-class FplApi {
-    private val http = HttpClient.newBuilder().followRedirects(HttpClient.Redirect.NORMAL).build()
+class FplApi(
+    baseUrl: String = DEFAULT_FPL_BASE_URL,
+    private val userAgent: String = "fpl-live-leagues/1.0"
+) : FplClient {
+    private val baseUrl = baseUrl.trimEnd('/')
+    private val http = HttpClient.newBuilder()
+        .followRedirects(HttpClient.Redirect.NORMAL)
+        .connectTimeout(Duration.ofSeconds(10))
+        .build()
     private val json = Json { ignoreUnknownKeys = true }
 
-    fun bootstrap(): JsonObject = getJson("$FPL_BASE_URL/bootstrap-static/")
+    override fun bootstrap(): JsonObject = getJson("$baseUrl/bootstrap-static/")
 
-    fun userClassicLeagues(entryId: Int): List<LeagueRef> {
-        val response = getJson("$FPL_BASE_URL/entry/$entryId/")
+    override fun userClassicLeagues(entryId: Int): List<LeagueRef> {
+        val response = getJson("$baseUrl/entry/$entryId/")
         val classicLeagues = response.obj("leagues").arr("classic")
         return classicLeagues.mapNotNull { item ->
             val obj = item as? JsonObject ?: return@mapNotNull null
@@ -25,8 +33,8 @@ class FplApi {
         }
     }
 
-    fun leagueStandingsPage(leagueId: Int, page: Int): LeagueStandingsPage {
-        val response = getJson("$FPL_BASE_URL/leagues-classic/$leagueId/standings/?page_standings=$page")
+    override fun leagueStandingsPage(leagueId: Int, page: Int): LeagueStandingsPage {
+        val response = getJson("$baseUrl/leagues-classic/$leagueId/standings/?page_standings=$page")
         val standings = response.obj("standings")
         val results = standings.arr("results").mapNotNull { item ->
             val obj = item as? JsonObject ?: return@mapNotNull null
@@ -46,8 +54,8 @@ class FplApi {
         )
     }
 
-    fun eventLiveElementPoints(eventId: Int): Map<Int, Int> {
-        val response = getJson("$FPL_BASE_URL/event/$eventId/live/")
+    override fun eventLiveElementPoints(eventId: Int): Map<Int, Int> {
+        val response = getJson("$baseUrl/event/$eventId/live/")
         return response.arr("elements").mapNotNull { item ->
             val obj = item as? JsonObject ?: return@mapNotNull null
             val elementId = obj.int("id") ?: return@mapNotNull null
@@ -56,8 +64,8 @@ class FplApi {
         }.toMap()
     }
 
-    fun entryPicks(entryId: Int, eventId: Int): List<PickRow> {
-        val response = getJson("$FPL_BASE_URL/entry/$entryId/event/$eventId/picks/")
+    override fun entryPicks(entryId: Int, eventId: Int): List<PickRow> {
+        val response = getJson("$baseUrl/entry/$entryId/event/$eventId/picks/")
         return response.arr("picks").mapNotNull { item ->
             val obj = item as? JsonObject ?: return@mapNotNull null
             val element = obj.int("element") ?: return@mapNotNull null
@@ -74,12 +82,13 @@ class FplApi {
     private fun getJson(url: String): JsonObject {
         val request = HttpRequest.newBuilder(URI.create(url))
             .header("Accept", "application/json")
-            .header("User-Agent", "fpl-live-leagues-cli")
+            .header("User-Agent", userAgent)
+            .timeout(Duration.ofSeconds(15))
             .GET()
             .build()
         val response = http.send(request, HttpResponse.BodyHandlers.ofString())
         if (response.statusCode() !in 200..299) {
-            throw IllegalStateException("FPL API request failed (${response.statusCode()}): $url")
+            throw FplApiException("FPL API request failed (${response.statusCode()}): $url", response.statusCode())
         }
         return json.parseToJsonElement(response.body()).jsonObject
     }

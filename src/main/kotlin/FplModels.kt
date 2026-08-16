@@ -53,3 +53,43 @@ data class PlayerLiveRow(
     val captain: Boolean,
     val viceCaptain: Boolean
 )
+
+data class MiniLeaguesResponse(
+    val entryId: Int,
+    val gameweek: Int,
+    val leagues: List<MiniLeagueRef>
+)
+
+data class MiniLeagueRef(
+    val id: Int,
+    val name: String,
+    val entryCount: Int
+)
+
+data class LiveLeagueResponse(
+    val leagueId: Int,
+    val gameweek: Int,
+    val teams: List<TeamLiveStanding>
+)
+
+data class TeamLiveStanding(
+    val rank: Int,
+    val entryId: Int,
+    val entryName: String,
+    val managerName: String,
+    val livePoints: Int
+)
+
+data class EntryPicksResponse(
+    val entryId: Int,
+    val gameweek: Int,
+    val livePoints: Int,
+    val players: List<PlayerLiveRow>
+)
+
+data class HealthResponse(
+    val status: String,
+    val fpl: String,
+    val gameweek: Int? = null,
+    val error: String? = null
+)
