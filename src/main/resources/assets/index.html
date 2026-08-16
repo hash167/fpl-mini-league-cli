@@ -1,0 +1,167 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>FPL Mini Leagues</title>
+  <style>
+    :root { color-scheme: light dark; }
+    body { font-family: system-ui, sans-serif; max-width: 880px; margin: 2rem auto; padding: 0 1rem; line-height: 1.4; }
+    h1 { font-size: 1.4rem; margin-bottom: 0.4rem; }
+    .muted { color: #666; }
+    form { display: flex; gap: 0.5rem; flex-wrap: wrap; margin: 1rem 0; }
+    input, button { font: inherit; padding: 0.4rem 0.6rem; }
+    button { cursor: pointer; }
+    table { width: 100%; border-collapse: collapse; margin-top: 0.75rem; }
+    th, td { text-align: left; padding: 0.45rem 0.4rem; border-bottom: 1px solid #ccc; }
+    tr.clickable { cursor: pointer; }
+    tr.clickable:hover { background: rgba(127,127,127,0.15); }
+    .error { color: #b00020; white-space: pre-wrap; }
+    .nav { margin: 0.75rem 0; }
+    .nav a { margin-right: 0.75rem; }
+    .tag { font-size: 0.85rem; color: #555; }
+  </style>
+</head>
+<body>
+  <h1>FPL Mini Leagues</h1>
+  <p class="muted">Enter a team ID, pick a mini league, then open a team for player-by-player live points.</p>
+  <div id="app"></div>
+  <script>
+    const app = document.getElementById("app");
+    const state = { entryId: null, gameweek: null, leagues: [], leagueId: null, teams: [], picks: null };
+
+    function el(html) {
+      const d = document.createElement("div");
+      d.innerHTML = html.trim();
+      return d.firstElementChild;
+    }
+
+    async function api(path) {
+      const res = await fetch(path);
+      const text = await res.text();
+      let data;
+      try { data = text ? JSON.parse(text) : {}; } catch { data = { error: text }; }
+      if (!res.ok) throw new Error(data.error || ("HTTP " + res.status));
+      return data;
+    }
+
+    function renderHome() {
+      app.innerHTML = "";
+      const form = el('<form><label>Team ID <input name="entryId" inputmode="numeric" required></label><button type="submit">Load mini leagues</button></form>');
+      form.addEventListener("submit", async (e) => {
+        e.preventDefault();
+        const id = Number(new FormData(form).get("entryId"));
+        await loadLeagues(id);
+      });
+      app.appendChild(form);
+    }
+
+    async function loadLeagues(entryId) {
+      app.innerHTML = "<p>Loading mini leagues…</p>";
+      try {
+        const data = await api("/entries/" + entryId + "/mini-leagues");
+        state.entryId = data.entryId;
+        state.gameweek = data.gameweek;
+        state.leagues = data.leagues || [];
+        renderLeagues();
+      } catch (err) {
+        app.innerHTML = "";
+        app.appendChild(el('<p class="error">' + escapeHtml(err.message) + "</p>"));
+        const back = el('<p class="nav"><a href="#">Back</a></p>');
+        back.querySelector("a").onclick = (e) => { e.preventDefault(); renderHome(); };
+        app.appendChild(back);
+      }
+    }
+
+    function renderLeagues() {
+      app.innerHTML = "";
+      app.appendChild(el("<p>Team <strong>" + state.entryId + "</strong> · GW " + state.gameweek + "</p>"));
+      const back = el('<p class="nav"><a href="#">Change team</a></p>');
+      back.querySelector("a").onclick = (e) => { e.preventDefault(); renderHome(); };
+      app.appendChild(back);
+      if (!state.leagues.length) {
+        app.appendChild(el("<p>No mini leagues (&lt;50 teams) found.</p>"));
+        return;
+      }
+      const table = el("<table><thead><tr><th>League</th><th>Teams</th></tr></thead><tbody></tbody></table>");
+      const tbody = table.querySelector("tbody");
+      state.leagues.forEach((league) => {
+        const tr = el('<tr class="clickable"><td>' + escapeHtml(league.name) + '</td><td>' + league.entryCount + "</td></tr>");
+        tr.onclick = () => loadLive(league.id, league.name);
+        tbody.appendChild(tr);
+      });
+      app.appendChild(table);
+    }
+
+    async function loadLive(leagueId, leagueName) {
+      app.innerHTML = "<p>Loading live table…</p>";
+      try {
+        const data = await api("/leagues/" + leagueId + "/live?gameweek=" + state.gameweek);
+        state.leagueId = data.leagueId;
+        state.leagueName = leagueName;
+        state.gameweek = data.gameweek;
+        state.teams = data.teams || [];
+        renderLive();
+      } catch (err) {
+        app.innerHTML = '<p class="error">' + escapeHtml(err.message) + "</p>";
+      }
+    }
+
+    function renderLive() {
+      app.innerHTML = "";
+      app.appendChild(el("<p><strong>" + escapeHtml(state.leagueName || ("League " + state.leagueId)) + "</strong> · GW " + state.gameweek + "</p>"));
+      const back = el('<p class="nav"><a href="#">Back to leagues</a></p>');
+      back.querySelector("a").onclick = (e) => { e.preventDefault(); renderLeagues(); };
+      app.appendChild(back);
+      const table = el("<table><thead><tr><th>#</th><th>Manager</th><th>Team</th><th>Live</th></tr></thead><tbody></tbody></table>");
+      const tbody = table.querySelector("tbody");
+      const ranked = state.teams.slice().sort((a, b) => b.livePoints - a.livePoints || a.rank - b.rank);
+      ranked.forEach((team, i) => {
+        const tr = el('<tr class="clickable"><td>' + (i + 1) + '</td><td>' + escapeHtml(team.managerName) +
+          "</td><td>" + escapeHtml(team.entryName) + "</td><td>" + team.livePoints + "</td></tr>");
+        tr.onclick = () => loadPicks(team);
+        tbody.appendChild(tr);
+      });
+      app.appendChild(table);
+    }
+
+    async function loadPicks(team) {
+      app.innerHTML = "<p>Loading picks…</p>";
+      try {
+        const data = await api("/entries/" + team.entryId + "/event/" + state.gameweek + "/picks");
+        state.picks = Object.assign({ managerName: team.managerName, entryName: team.entryName }, data);
+        renderPicks();
+      } catch (err) {
+        app.innerHTML = '<p class="error">' + escapeHtml(err.message) + "</p>";
+      }
+    }
+
+    function renderPicks() {
+      const p = state.picks;
+      app.innerHTML = "";
+      app.appendChild(el("<p><strong>" + escapeHtml(p.managerName) + "</strong> — " + escapeHtml(p.entryName) +
+        "<br>Live points: <strong>" + p.livePoints + "</strong> · GW " + p.gameweek + "</p>"));
+      const back = el('<p class="nav"><a href="#">Back to table</a></p>');
+      back.querySelector("a").onclick = (e) => { e.preventDefault(); renderLive(); };
+      app.appendChild(back);
+      const table = el("<table><thead><tr><th></th><th>Player</th><th>Raw</th><th>×</th><th>Pts</th></tr></thead><tbody></tbody></table>");
+      const tbody = table.querySelector("tbody");
+      (p.players || []).forEach((pl) => {
+        const tag = pl.captain ? " (C)" : (pl.viceCaptain ? " (VC)" : "");
+        const bench = pl.multiplier === 0 ? ' <span class="tag">bench</span>' : "";
+        tbody.appendChild(el("<tr><td>" + pl.position + "</td><td>" + escapeHtml(pl.name) +
+          (pl.team ? " " + escapeHtml(pl.team) : "") + tag + bench +
+          "</td><td>" + pl.rawPoints + "</td><td>" + pl.multiplier + "</td><td>" + pl.contribution + "</td></tr>"));
+      });
+      app.appendChild(table);
+    }
+
+    function escapeHtml(s) {
+      return String(s == null ? "" : s)
+        .replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
+    }
+
+    renderHome();
+  </script>
+</body>
+</html>
