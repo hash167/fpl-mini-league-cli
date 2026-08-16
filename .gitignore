@@ -26,3 +26,11 @@
 !gradle/wrapper/
 !gradle/wrapper/gradle-wrapper.jar
 !gradle/wrapper/gradle-wrapper.properties
+
+# Webapp / deploy
+!Dockerfile
+!Dockerfile.runtime
+!config.yml
+!k8s/
+!k8s/**
+!.dockerignore

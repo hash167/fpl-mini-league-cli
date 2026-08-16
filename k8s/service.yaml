@@ -1,0 +1,14 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: fpl-web
+  namespace: fpl
+spec:
+  type: NodePort
+  selector:
+    app: fpl-web
+  ports:
+    - name: http
+      port: 8080
+      targetPort: 8080
+      nodePort: 30810
