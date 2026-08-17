@@ -1,12 +1,16 @@
 # fpl_live_leagues
 
-Kotlin CLI and Dropwizard webapp that:
+Kotlin CLI and Dropwizard webapp for **live FPL tracking** during a gameweek (the livefpl.net live-rank / live-leagues experience, not the rest of that product).
 
-- Takes an FPL team/entry ID
-- Lists mini leagues (`< 50` teams, no extra standings page)
-- Shows live GW points and player-by-player contributions (captain multiplier)
+- Enter an FPL entry ID for live GW points (gross / net after hit), projected bonus, autosubs, chip, official overall rank, value, bank, players remaining, captain status
+- Open a classic league by picker (mini leagues: `< 50` teams and no next standings page) **or** by numeric league ID
+- Live league table: live rank, official rank, live total, GW net/gross, remaining, overall rank, value, chip
+- Player-by-player XI + bench with minutes, raw points, projected vs confirmed bonus, C/VC, auto-sub in/out
+- Live games strip and 30s auto-refresh while fixtures are in progress
 
-The CLI and webapp share `FplApi` / `FplService` so filtering and live-points math stay in sync.
+Uses only the official FPL API. Bootstrap, fixtures, and event-live payloads are cached in memory for ~20s.
+
+Out of scope: transfer planner, price changes, top10k EO, what-if overall rank, accounts, ads.
 
 ## Requirements
 
@@ -56,15 +60,26 @@ In the browser URL on the Fantasy Premier League site:
 
 ## Webapp
 
-Dropwizard JSON API plus a small HTML UI.
+Dropwizard JSON API plus a dense live-tracker UI.
 
 | Method | Path | Purpose |
 | --- | --- | --- |
-| GET | `/` | HTML UI (enter team ID → pick league → live table → picks) |
+| GET | `/` | Live tracker UI |
 | GET | `/health` | App health; also probes FPL bootstrap when cheap |
-| GET | `/entries/{entryId}/mini-leagues` | Mini leagues for a team |
-| GET | `/leagues/{leagueId}/live?gameweek=` | Standings with live points (default: current GW) |
-| GET | `/entries/{entryId}/event/{gameweek}/picks` | Player-by-player live contributions |
+| GET | `/entries/{entryId}/live?gameweek=&autosubs=` | Home / live rank for one manager (default current GW, autosubs on) |
+| GET | `/entries/{entryId}/mini-leagues` | Mini leagues for a team (`entryCount < 50 && !hasNext`) |
+| GET | `/leagues/{leagueId}/live?gameweek=&autosubs=` | Live table for any classic league ID (capped at 50 with a note) |
+| GET | `/entries/{entryId}/event/{gameweek}/picks?autosubs=` | Player-by-player live breakdown |
+
+Live math:
+
+- **GW gross** = sum of effective player points × multiplier (captain 2× / TC 3×, bench 0 unless BB)
+- **GW net** = GW gross − transfer hit (`event_transfers_cost`)
+- **Live total** = official season total − official GW points + GW net (avoids double-counting)
+- **Bonus** = official bonus when FPL has set it; otherwise 3/2/1 projected from BPS on that fixture
+- **Autosubs** = FPL `automatic_subs` when present, then prospective FPL-style replacements (GK only for GK; 3 DEF / 2 MID / 1 FWD)
+
+True **live overall rank** is not computed (that needs a private histogram). The UI labels FPL's official overall rank as official.
 
 Config is Dropwizard YAML (`config.yml`). The HTTP connector listens on **8080**. Override the FPL API with `fplBaseUrl`.
 
@@ -89,15 +104,15 @@ java -jar build/libs/fpl-web-1.0.jar server config.yml
 ./gradlew test
 ```
 
-Covers mini-league filtering (`entryCount < 50` and no next page) and live-points math (captain / bench multipliers) against mocked FPL JSON.
+Covers mini-league filtering, captain/bench multipliers, BPS bonus projection, auto-sub eligibility, GW net, and live season total (no double-count).
 
 ## Docker
 
 Multi-stage image (Temurin 17 JDK build → Temurin 17 JRE runtime), port 8080:
 
 ```bash
-docker build -t fpl-web:1.0 .
-docker run --rm -p 8080:8080 fpl-web:1.0
+docker build -t fpl-web:1.1 .
+docker run --rm -p 8080:8080 fpl-web:1.1
 ```
 
 `Dockerfile.runtime` is a JRE-only image if you already built `fpl-web-1.0.jar`.
@@ -109,8 +124,8 @@ Manifests live in `k8s/`. They create namespace `fpl`, one replica, and a NodePo
 On a machine that can build images:
 
 ```bash
-docker build -t fpl-web:1.0 .
-docker save fpl-web:1.0 | ssh randomnumber01@100.67.63.33 'sudo k3s ctr images import -'
+docker build -t fpl-web:1.1 .
+docker save fpl-web:1.1 | ssh randomnumber01@100.67.63.33 'sudo k3s ctr images import -'
 ```
 
 Apply manifests (from this repo):
