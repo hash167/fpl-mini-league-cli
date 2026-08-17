@@ -150,19 +150,32 @@ class FplService(private val api: FplClient) {
 
     fun entryPicksLive(entryId: Int, gameweek: Int, applyAutosubs: Boolean): EntryPicksResponse {
         val snapshot = liveSnapshot(gameweek)
-        val raw = api.entryEvent(entryId, gameweek)
+        val raw = try {
+            api.entryEvent(entryId, gameweek)
+        } catch (_: Exception) {
+            JsonObject(emptyMap())
+        }
+        val profileJson = try {
+            api.entry(entryId)
+        } catch (_: Exception) {
+            JsonObject(emptyMap())
+        }
         val event = if (raw.isEmpty()) {
             EntryEventPicks(
                 activeChip = null,
                 automaticSubs = emptyList(),
-                history = EntryEventHistory(gameweek, 0, 0, null, null, null, 0, 0),
-                picks = api.entryPicks(entryId, gameweek)
+                history = historyFromEntry(profileJson, gameweek),
+                picks = try {
+                    api.entryPicks(entryId, gameweek)
+                } catch (_: Exception) {
+                    emptyList()
+                }
             )
         } else {
             parseEntryEventPicks(raw)
         }
         val profile = try {
-            parseEntryProfile(api.entry(entryId))
+            parseEntryProfile(profileJson)
         } catch (_: Exception) {
             "" to ""
         }
