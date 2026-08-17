@@ -4,9 +4,10 @@ Kotlin CLI and Dropwizard webapp for **live FPL tracking** during a gameweek (th
 
 - Enter an FPL entry ID for live GW points (gross / net after hit), projected bonus, autosubs, chip, official overall rank, value, bank, players remaining, captain status
 - Open a classic league by picker (mini leagues: `< 50` teams and no next standings page) **or** by numeric league ID
-- Live league table: live rank, official rank, live total, GW net/gross, remaining, overall rank, value, chip
+- Live league table: live rank, official rank, live total, GW net/gross, remaining, overall rank, value, chip (WC/FH/BB/TC/AM)
 - Player-by-player XI + bench with minutes, raw points, projected vs confirmed bonus, C/VC, auto-sub in/out
-- Live games strip and 30s auto-refresh while fixtures are in progress
+- Live games strip and 90s auto-refresh while fixtures are in progress
+- Pre-season / before kickoff still renders the table from the official FPL API (zeros, remaining = full XI)
 
 Uses only the official FPL API. Bootstrap, fixtures, and event-live payloads are cached in memory for ~20s.
 
@@ -78,6 +79,7 @@ Live math:
 - **Live total** = official season total − official GW points + GW net (avoids double-counting)
 - **Bonus** = official bonus when FPL has set it; otherwise 3/2/1 projected from BPS on that fixture
 - **Autosubs** = FPL `automatic_subs` when present, then prospective FPL-style replacements (GK only for GK; 3 DEF / 2 MID / 1 FWD)
+- **Chips** = WC / FH / BB / TC / AM (assistant manager)
 
 True **live overall rank** is not computed (that needs a private histogram). The UI labels FPL's official overall rank as official.
 
