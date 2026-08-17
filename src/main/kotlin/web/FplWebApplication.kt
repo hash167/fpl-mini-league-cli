@@ -1,5 +1,6 @@
 package web
 
+import CachingFplClient
 import FplApi
 import FplService
 import com.fasterxml.jackson.module.kotlin.kotlinModule
@@ -15,7 +16,7 @@ class FplWebApplication : Application<FplWebConfiguration>() {
     }
 
     override fun run(configuration: FplWebConfiguration, environment: Environment) {
-        val service = FplService(FplApi(baseUrl = configuration.fplBaseUrl))
+        val service = FplService(CachingFplClient(FplApi(baseUrl = configuration.fplBaseUrl)))
         environment.healthChecks().register("fpl", FplHealthCheck(service))
         environment.jersey().register(FplApiExceptionMapper())
         environment.jersey().register(HealthResource(service))

@@ -2,6 +2,7 @@ package web
 
 import FplService
 import LiveLeagueResponse
+import jakarta.ws.rs.DefaultValue
 import jakarta.ws.rs.GET
 import jakarta.ws.rs.Path
 import jakarta.ws.rs.PathParam
@@ -16,6 +17,7 @@ class LeaguesResource(private val service: FplService) {
     @Path("/live")
     fun live(
         @PathParam("leagueId") leagueId: Int,
-        @QueryParam("gameweek") gameweek: Int?
-    ): LiveLeagueResponse = service.liveLeague(leagueId, gameweek)
+        @QueryParam("gameweek") gameweek: Int?,
+        @QueryParam("autosubs") @DefaultValue("true") autosubs: Boolean
+    ): LiveLeagueResponse = service.liveLeague(leagueId, gameweek, autosubs)
 }
