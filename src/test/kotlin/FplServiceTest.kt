@@ -135,6 +135,27 @@ class FplServiceTest {
         assertEquals("Bukayo Saka", picks.players.single().name)
     }
 
+    @Test
+    fun `entryLive renders zeros when GW picks are not published yet`() {
+        val client = FakeFplClient(
+            bootstrap = parse(
+                """{"events":[{"id":1,"is_next":true}],"teams":[],"elements":[]}"""
+            ),
+            entryJson = parse(
+                """{"id":1,"player_first_name":"Chris","player_last_name":"Musson","name":"Solio Moose"}"""
+            ),
+            throwEntryEvent = true
+        )
+        val live = FplService(client).entryLive(1, null, true)
+        assertEquals(1, live.gameweek)
+        assertEquals("Chris Musson", live.managerName)
+        assertEquals("Solio Moose", live.teamName)
+        assertEquals(0, live.gwNet)
+        assertEquals(0, live.liveTotal)
+        assertEquals(false, live.live)
+        assertEquals(emptyList(), live.players)
+    }
+
     private fun parse(raw: String): JsonObject = json.parseToJsonElement(raw).jsonObject
 }
 
@@ -143,13 +164,22 @@ class FakeFplClient(
     private val classicLeagues: List<LeagueRef> = emptyList(),
     private val standings: Map<Int, LeagueStandingsPage> = emptyMap(),
     private val livePoints: Map<Int, Int> = emptyMap(),
-    private val picks: Map<Pair<Int, Int>, List<PickRow>> = emptyMap()
+    private val picks: Map<Pair<Int, Int>, List<PickRow>> = emptyMap(),
+    private val entryJson: JsonObject = JsonObject(emptyMap()),
+    private val throwEntryEvent: Boolean = false
 ) : FplClient {
     override fun bootstrap(): JsonObject = bootstrap
     override fun userClassicLeagues(entryId: Int): List<LeagueRef> = classicLeagues
     override fun leagueStandingsPage(leagueId: Int, page: Int): LeagueStandingsPage =
         standings.getValue(leagueId)
     override fun eventLiveElementPoints(eventId: Int): Map<Int, Int> = livePoints
-    override fun entryPicks(entryId: Int, eventId: Int): List<PickRow> =
-        picks[entryId to eventId] ?: emptyList()
+    override fun entry(entryId: Int): JsonObject = entryJson
+    override fun entryEvent(entryId: Int, eventId: Int): JsonObject {
+        if (throwEntryEvent) throw FplApiException("missing picks", 404)
+        return JsonObject(emptyMap())
+    }
+    override fun entryPicks(entryId: Int, eventId: Int): List<PickRow> {
+        if (throwEntryEvent) throw FplApiException("missing picks", 404)
+        return picks[entryId to eventId] ?: emptyList()
+    }
 }
