@@ -29,7 +29,7 @@ class FplApi(
         getJsonObject("$baseUrl/entry/$entryId/history/")
 
     override fun entryEvent(entryId: Int, eventId: Int): JsonObject =
-        getJsonObject("$baseUrl/entry/$entryId/event/$eventId/picks/")
+        getJsonObjectOrEmpty("$baseUrl/entry/$entryId/event/$eventId/picks/")
 
     override fun eventLive(eventId: Int): JsonObject =
         getJsonObject("$baseUrl/event/$eventId/live/")
@@ -88,6 +88,15 @@ class FplApi(
         val element = getJson(url)
         return element as? JsonObject
             ?: throw FplApiException("FPL API did not return a JSON object: $url", 502)
+    }
+
+    /** GW picks 404 before a manager has a published squad (pre-season / yet to start). */
+    private fun getJsonObjectOrEmpty(url: String): JsonObject {
+        return try {
+            getJsonObject(url)
+        } catch (e: FplApiException) {
+            if (e.statusCode == 404) JsonObject(emptyMap()) else throw e
+        }
     }
 
     private fun getJson(url: String): JsonElement {
@@ -272,3 +281,15 @@ fun parseEntryProfile(response: JsonObject): Pair<String, String> {
     val team = response.str("name") ?: "Team ${response.int("id") ?: ""}"
     return manager to team
 }
+
+fun historyFromEntry(entry: JsonObject, gameweek: Int): EntryEventHistory =
+    EntryEventHistory(
+        event = gameweek,
+        points = entry.int("summary_event_points") ?: 0,
+        totalPoints = entry.int("summary_overall_points") ?: 0,
+        overallRank = entry.int("summary_overall_rank"),
+        bank = entry.int("last_deadline_bank"),
+        value = entry.int("last_deadline_value"),
+        eventTransfers = 0,
+        eventTransfersCost = 0
+    )
