@@ -122,6 +122,10 @@ class FplServiceTest {
         val table = service.liveLeague(7, null)
         assertEquals(4, table.gameweek)
         assertEquals(14, table.teams.single().livePoints)
+        assertEquals(14, table.teams.single().gwGross)
+        assertEquals(14, table.teams.single().gwNet)
+        assertEquals(14, table.teams.single().liveTotal)
+        assertEquals(1, table.teams.single().liveRank)
         assertEquals(42, table.teams.single().entryId)
 
         val picks = service.entryPicksLive(42, 4)
