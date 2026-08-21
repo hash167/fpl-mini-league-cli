@@ -88,6 +88,9 @@
     .in { color: var(--accent); }
     .out { color: var(--danger); }
     .bench { opacity: 0.72; }
+    .scorers { font-size: 0.75rem; color: var(--muted); white-space: normal; line-height: 1.35; margin-top: 0.2rem; }
+    .scorers b { color: var(--accent); font-weight: 650; }
+    .scorers .zero { opacity: 0.7; }
   </style>
 </head>
 <body>
@@ -156,6 +159,24 @@
       pill.className = "pill" + (live ? " live" : "");
     }
 
+    function persistView() {
+      const params = new URLSearchParams();
+      if (state.entryId) params.set("entry", String(state.entryId));
+      if (state.league && state.league.leagueId) params.set("league", String(state.league.leagueId));
+      const qs = params.toString();
+      const next = qs ? (location.pathname + "?" + qs) : location.pathname;
+      history.replaceState(null, "", next);
+      try {
+        if (state.entryId) localStorage.setItem("fpl.entryId", String(state.entryId));
+        if (state.league && state.league.leagueId) localStorage.setItem("fpl.leagueId", String(state.league.leagueId));
+        else localStorage.removeItem("fpl.leagueId");
+      } catch (e) {}
+      const entryInput = document.querySelector('input[name="entryId"]');
+      const leagueInput = document.querySelector('input[name="leagueId"]');
+      if (entryInput && state.entryId) entryInput.value = state.entryId;
+      if (leagueInput) leagueInput.value = (state.league && state.league.leagueId) || "";
+    }
+
     function scheduleRefresh() {
       clearInterval(state.timer);
       const live = !!(state.entry && state.entry.live) || !!(state.league && state.league.live);
@@ -197,6 +218,7 @@
         state.gameweek = entry.gameweek;
         state.picks = { players: entry.players, managerName: entry.managerName, teamName: entry.teamName, livePoints: entry.gwGross, gameweek: entry.gameweek };
         setPills(entry.gameweek, entry.live);
+        persistView();
         render();
         scheduleRefresh();
       } catch (err) {
@@ -211,6 +233,7 @@
         state.league = data;
         state.gameweek = data.gameweek;
         setPills(data.gameweek, data.live);
+        persistView();
         render();
         scheduleRefresh();
       } catch (err) {
@@ -331,6 +354,21 @@
       return box;
     }
 
+
+    function scorerLine(team) {
+      const players = (team.players || []).filter((pl) => !pl.onBench && (pl.contribution > 0 || pl.minutes > 0));
+      const scored = players.filter((pl) => pl.contribution > 0)
+        .sort((a, b) => (b.contribution - a.contribution));
+      if (!scored.length) {
+        return "<div class='scorers zero'>No points yet</div>";
+      }
+      const bits = scored.map((pl) => {
+        const tag = pl.captain ? " C" : (pl.viceCaptain ? " VC" : "");
+        return escapeHtml(pl.webName || pl.name) + tag + " <b>" + pl.contribution + "</b>";
+      });
+      return "<div class='scorers'>" + bits.join(" · ") + "</div>";
+    }
+
     function renderTable() {
       const lg = state.league;
       const wrap = el("<section class='card'></section>");
@@ -394,7 +432,7 @@
           let v = team[c[0]];
           if (c[0] === "managerName") {
             td.className = "name";
-            td.innerHTML = "<div>" + escapeHtml(team.managerName) + "</div><div class='muted'>" + escapeHtml(team.entryName) + "</div>";
+            td.innerHTML = "<div>" + escapeHtml(team.managerName) + "</div><div class='muted'>" + escapeHtml(team.entryName) + "</div>" + scorerLine(team);
           } else if (c[0] === "teamValue") td.textContent = fmtMoney(v);
           else if (c[0] === "overallRank") td.textContent = fmtRank(v);
           else if (c[0] === "activeChip") { td.textContent = v || ""; td.className = "chip"; }
@@ -439,6 +477,24 @@
       box.appendChild(table);
       return box;
     }
+
+    (async function boot() {
+      const params = new URLSearchParams(location.search);
+      let entryId = Number(params.get("entry") || params.get("entryId") || 0);
+      let leagueId = Number(params.get("league") || params.get("leagueId") || 0);
+      try {
+        if (!entryId) entryId = Number(localStorage.getItem("fpl.entryId") || 0);
+        if (!leagueId) leagueId = Number(localStorage.getItem("fpl.leagueId") || 0);
+      } catch (e) {}
+      if (entryId) {
+        document.querySelector('input[name="entryId"]').value = entryId;
+        await loadEntry(entryId);
+      }
+      if (leagueId) {
+        document.querySelector('input[name="leagueId"]').value = leagueId;
+        await loadLeague(leagueId);
+      }
+    })();
   </script>
 </body>
 </html>

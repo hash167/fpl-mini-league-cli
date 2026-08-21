@@ -432,7 +432,8 @@ class FplService(private val api: FplClient) {
             projectedBonus = squad.projectedBonus,
             confirmedBonus = squad.confirmedBonus,
             autosubsApplied = squad.autosubsApplied,
-            captainStatus = squad.captainStatus
+            captainStatus = squad.captainStatus,
+            players = squad.players
         )
     }
 
