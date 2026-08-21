@@ -126,7 +126,8 @@ data class TeamLiveStanding(
     val projectedBonus: Int = 0,
     val confirmedBonus: Int = 0,
     val autosubsApplied: Int = 0,
-    val captainStatus: String = ""
+    val captainStatus: String = "",
+    val players: List<PlayerLiveRow> = emptyList()
 )
 
 data class EntryPicksResponse(
