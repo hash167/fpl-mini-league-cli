@@ -58,11 +58,14 @@
     .fixtures { display: flex; gap: 0.45rem; overflow-x: auto; padding-bottom: 0.2rem; }
     .fx {
       flex: 0 0 auto; background: var(--bg-3); border: 1px solid var(--line);
-      border-radius: 8px; padding: 0.35rem 0.55rem; min-width: 7.8rem; font-size: 0.8rem;
+      border-radius: 8px; padding: 0.35rem 0.55rem; min-width: 9.4rem; font-size: 0.8rem;
     }
     .fx .score { font-weight: 650; }
     .fx.live { border-color: #2f6b50; }
     .fx.done { opacity: 0.7; }
+    .fx-players { margin-top: 0.28rem; font-size: 0.72rem; line-height: 1.35; }
+    .fx-players .role { color: var(--accent-2); font-weight: 650; }
+    .fx-players .pts { color: var(--accent); font-weight: 650; }
     .toolbar { display: flex; gap: 0.6rem; flex-wrap: wrap; align-items: center; justify-content: space-between; }
     table.live { width: 100%; border-collapse: collapse; font-variant-numeric: tabular-nums; }
     table.live th, table.live td { padding: 0.38rem 0.4rem; border-bottom: 1px solid var(--line); text-align: right; white-space: nowrap; }
@@ -114,17 +117,28 @@
     };
 
     function el(html) {
+      const raw = String(html == null ? "" : html).trim();
+      const isTr = /^<tr[\s>]/i.test(raw);
+      const isCell = /^<t[dh][\s>]/i.test(raw);
       const d = document.createElement("div");
-      d.innerHTML = html.trim();
+      if (isTr) {
+        d.innerHTML = "<table><tbody>" + raw + "</tbody></table>";
+        return d.querySelector("tr");
+      }
+      if (isCell) {
+        d.innerHTML = "<table><tbody><tr>" + raw + "</tr></tbody></table>";
+        return d.querySelector("td,th");
+      }
+      d.innerHTML = raw;
       return d.firstElementChild;
     }
     function escapeHtml(s) {
       return String(s == null ? "" : s)
         .replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
     }
-    function fmt(n) { return n == null || n === "" ? "\u2014" : n; }
-    function fmtMoney(n) { return n == null ? "\u2014" : "\u00a3" + Number(n).toFixed(1) + "m"; }
-    function fmtRank(n) { return n == null ? "\u2014" : Number(n).toLocaleString(); }
+    function fmt(n) { return n == null || n === "" ? "—" : n; }
+    function fmtMoney(n) { return n == null ? "—" : "£" + Number(n).toFixed(1) + "m"; }
+    function fmtRank(n) { return n == null ? "—" : Number(n).toLocaleString(); }
 
     async function api(path) {
       const res = await fetch(path);
@@ -136,7 +150,7 @@
     }
 
     function setPills(gw, live) {
-      document.getElementById("gwPill").textContent = gw ? ("GW " + gw) : "GW \u2014";
+      document.getElementById("gwPill").textContent = gw ? ("GW " + gw) : "GW —";
       const pill = document.getElementById("livePill");
       pill.textContent = live ? "LIVE" : "not live";
       pill.className = "pill" + (live ? " live" : "");
@@ -167,7 +181,7 @@
     });
 
     async function loadEntry(entryId, quiet) {
-      if (!quiet) app.innerHTML = "<p class='muted'>Loading live rank\u2026</p>";
+      if (!quiet) app.innerHTML = "<p class='muted'>Loading live rank…</p>";
       try {
         const q = "?autosubs=" + state.autosubs;
         const entry = await api("/entries/" + entryId + "/live" + q);
@@ -191,7 +205,7 @@
     }
 
     async function loadLeague(leagueId, quiet) {
-      if (!quiet) app.innerHTML = (app.innerHTML || "") + "<p class='muted'>Loading live table\u2026</p>";
+      if (!quiet) app.innerHTML = (app.innerHTML || "") + "<p class='muted'>Loading live table…</p>";
       try {
         const data = await api("/leagues/" + leagueId + "/live?autosubs=" + state.autosubs);
         state.league = data;
@@ -233,7 +247,7 @@
     function renderEntryCard() {
       const e = state.entry;
       const card = el("<section class='card'></section>");
-      card.appendChild(el("<div><strong>" + escapeHtml(e.managerName) + "</strong> \u00b7 " +
+      card.appendChild(el("<div><strong>" + escapeHtml(e.managerName) + "</strong> · " +
         escapeHtml(e.teamName) + " <span class='muted'>#" + e.entryId + "</span></div>"));
       const stats = el("<div class='stats'></div>");
       const items = [
@@ -244,8 +258,8 @@
         ["Proj. bonus", e.projectedBonus],
         ["Confirmed bonus", e.confirmedBonus],
         ["Remaining", e.playersRemaining],
-        ["Captain", e.captainStatus || "\u2014"],
-        ["Chip", e.activeChip || "\u2014"],
+        ["Captain", e.captainStatus || "—"],
+        ["Chip", e.activeChip || "—"],
         ["Overall rank", fmtRank(e.overallRank) + " (official)"],
         ["Value", fmtMoney(e.teamValue)],
         ["Bank", fmtMoney(e.bank)],
@@ -271,18 +285,47 @@
       return box;
     }
 
+    function squadPlayers() {
+      return (state.entry && state.entry.players)
+        || (state.picks && state.picks.players)
+        || [];
+    }
+
+    function playersInFixture(fx) {
+      const home = String(fx.home || "").toUpperCase();
+      const away = String(fx.away || "").toUpperCase();
+      return squadPlayers().filter((pl) => {
+        const team = String(pl.team || "").toUpperCase();
+        return team && (team === home || team === away);
+      });
+    }
+
     function renderFixtures(fixtures) {
       const box = el("<section class='card'><div class='muted'>Gameweek fixtures</div><div class='fixtures'></div></section>");
       const row = box.querySelector(".fixtures");
       fixtures.forEach((fx) => {
         const score = fx.started || fx.finished
-          ? (fmt(fx.homeScore) + "\u2013" + fmt(fx.awayScore))
+          ? (fmt(fx.homeScore) + "–" + fmt(fx.awayScore))
           : "vs";
         const clock = fx.finished ? "FT" : (fx.started ? (fx.minutes + "'") : (fx.kickoffTime || "").replace("T", " ").slice(0, 16));
         const node = el("<div class='fx'><div>" + escapeHtml(fx.home) + " <span class='score'>" + score +
           "</span> " + escapeHtml(fx.away) + "</div><div class='muted'>" + escapeHtml(clock) + "</div></div>");
         if (fx.started && !fx.finished) node.classList.add("live");
         if (fx.finished) node.classList.add("done");
+        const mine = playersInFixture(fx);
+        if (mine.length) {
+          const list = el("<div class='fx-players'></div>");
+          mine.forEach((pl) => {
+            const role = pl.captain ? "C" : (pl.viceCaptain ? "VC" : "");
+            const bits = [escapeHtml(pl.webName || pl.name || "")];
+            if (role) bits.push("<span class='role'>" + role + "</span>");
+            if (pl.onBench) bits.push("<span class='muted'>bench</span>");
+            bits.push("<span class='muted'>" + fmt(pl.minutes) + "'</span>");
+            bits.push("<span class='pts'>" + fmt(pl.contribution) + " pts</span>");
+            list.appendChild(el("<div" + (pl.onBench ? " class='bench'" : "") + ">" + bits.join(" · ") + "</div>"));
+          });
+          node.appendChild(list);
+        }
         row.appendChild(node);
       });
       return box;
@@ -293,7 +336,7 @@
       const wrap = el("<section class='card'></section>");
       const bar = el("<div class='toolbar'></div>");
       bar.appendChild(el("<div><strong>" + escapeHtml(lg.leagueName || ("League " + lg.leagueId)) +
-        "</strong> <span class='muted'>\u00b7 " + (lg.shown || 0) + (lg.entryCount ? ("/" + lg.entryCount) : "") + " teams</span></div>"));
+        "</strong> <span class='muted'>· " + (lg.shown || 0) + (lg.entryCount ? ("/" + lg.entryCount) : "") + " teams</span></div>"));
       const controls = el("<div></div>");
       const auto = el("<button type='button'>Autosubs " + (state.autosubs ? "On" : "Off") + "</button>");
       auto.onclick = () => { state.autosubs = !state.autosubs; if (lg) loadLeague(lg.leagueId); else if (state.entryId) loadEntry(state.entryId); };
@@ -304,7 +347,7 @@
       bar.appendChild(controls);
       wrap.appendChild(bar);
       if (lg.capNote) wrap.appendChild(el("<p class='note'>" + escapeHtml(lg.capNote) + "</p>"));
-      if (!lg.live) wrap.appendChild(el("<p class='muted'>GW not started yet \u2014 showing official FPL totals (live columns will move after kickoff).</p>"));
+      if (!lg.live) wrap.appendChild(el("<p class='muted'>GW not started yet — showing official FPL totals (live columns will move after kickoff).</p>"));
 
       const cols = [
         ["liveRank", "Live rank"],
@@ -324,7 +367,7 @@
       const trh = table.querySelector("thead tr");
       cols.forEach((c) => {
         const th = document.createElement("th");
-        th.textContent = c[1] + (state.sort.key === c[0] ? (state.sort.dir === 1 ? " \u2191" : " \u2193") : "");
+        th.textContent = c[1] + (state.sort.key === c[0] ? (state.sort.dir === 1 ? " ↑" : " ↓") : "");
         if (c[0] === "managerName") th.className = "name";
         th.onclick = () => {
           if (state.sort.key === c[0]) state.sort.dir *= -1;
@@ -373,13 +416,13 @@
         box.appendChild(el("<p class='error'>" + escapeHtml(p.error) + "</p>"));
         return box;
       }
-      box.appendChild(el("<div><strong>" + escapeHtml(p.managerName || "") + "</strong> \u00b7 " +
+      box.appendChild(el("<div><strong>" + escapeHtml(p.managerName || "") + "</strong> · " +
         escapeHtml(p.entryName || p.teamName || "") + "</div>"));
-      box.appendChild(el("<p class='muted'>GW net " + fmt(p.gwNet) + " \u00b7 gross " + fmt(p.gwGross) +
-        " \u00b7 hit " + fmt(p.transferCost) + " \u00b7 live total " + fmt(p.liveTotal) +
-        (p.activeChip ? (" \u00b7 " + p.activeChip) : "") + "</p>"));
+      box.appendChild(el("<p class='muted'>GW net " + fmt(p.gwNet) + " · gross " + fmt(p.gwGross) +
+        " · hit " + fmt(p.transferCost) + " · live total " + fmt(p.liveTotal) +
+        (p.activeChip ? (" · " + p.activeChip) : "") + "</p>"));
       const table = el("<table class='live players'><thead><tr>" +
-        "<th></th><th>Player</th><th class='num'>Min</th><th class='num'>Raw</th><th class='num'>Bonus</th><th class='num'>\u00d7</th><th class='num'>Pts</th>" +
+        "<th></th><th>Player</th><th class='num'>Min</th><th class='num'>Raw</th><th class='num'>Bonus</th><th class='num'>×</th><th class='num'>Pts</th>" +
         "</tr></thead><tbody></tbody></table>");
       const tbody = table.querySelector("tbody");
       (p.players || []).forEach((pl) => {
