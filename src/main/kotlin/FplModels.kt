@@ -1,6 +1,7 @@
 data class LeagueRef(
     val id: Int,
-    val name: String
+    val name: String,
+    val leagueType: String = "x"
 )
 
 data class StandingRow(

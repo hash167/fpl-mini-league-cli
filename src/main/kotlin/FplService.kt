@@ -8,6 +8,9 @@ const val LIVE_LEAGUE_CAP = 50
 fun isMiniLeague(entryCount: Int, hasNext: Boolean): Boolean =
     entryCount < MINI_LEAGUE_ENTRY_LIMIT && !hasNext
 
+fun isSystemLeague(leagueType: String?): Boolean =
+    leagueType?.equals("s", ignoreCase = true) == true
+
 fun liveContribution(rawPoints: Int, multiplier: Int): Int = rawPoints * multiplier
 
 fun teamLivePoints(players: List<PlayerLiveRow>): Int = players.sumOf { it.contribution }
@@ -89,9 +92,8 @@ class FplService(private val api: FplClient) {
     fun miniLeagues(entryId: Int): MiniLeaguesResponse {
         val gameweek = currentGameweek()
         val leagues = api.userClassicLeagues(entryId).mapNotNull { league ->
-            val page = api.leagueStandingsPage(league.id, 1)
+            val page = standingsIfMini(league) ?: return@mapNotNull null
             val entryCount = page.totalEntries ?: page.results.size
-            if (!isMiniLeague(entryCount, page.hasNext)) return@mapNotNull null
             MiniLeagueRef(id = league.id, name = league.name, entryCount = entryCount)
         }
         return MiniLeaguesResponse(entryId = entryId, gameweek = gameweek, leagues = leagues)
@@ -99,9 +101,8 @@ class FplService(private val api: FplClient) {
 
     fun miniLeagueSummaries(entryId: Int): List<LeagueSummary> {
         return api.userClassicLeagues(entryId).mapNotNull { league ->
-            val standingsPage = api.leagueStandingsPage(league.id, 1)
+            val standingsPage = standingsIfMini(league) ?: return@mapNotNull null
             val entryCount = standingsPage.totalEntries ?: standingsPage.results.size
-            if (!isMiniLeague(entryCount, standingsPage.hasNext)) return@mapNotNull null
             LeagueSummary(
                 id = league.id,
                 name = league.name,
@@ -109,6 +110,19 @@ class FplService(private val api: FplClient) {
                 standings = standingsPage.results
             )
         }
+    }
+
+    /** Skip system leagues; a standings 4xx/5xx/timeout is "not a mini league". */
+    private fun standingsIfMini(league: LeagueRef): LeagueStandingsPage? {
+        if (isSystemLeague(league.leagueType)) return null
+        val page = try {
+            api.leagueStandingsPage(league.id, 1)
+        } catch (_: Exception) {
+            return null
+        }
+        val entryCount = page.totalEntries ?: page.results.size
+        if (!isMiniLeague(entryCount, page.hasNext)) return null
+        return page
     }
 
     fun liveLeague(leagueId: Int, gameweek: Int?): LiveLeagueResponse =

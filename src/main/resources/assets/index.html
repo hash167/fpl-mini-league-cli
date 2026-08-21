@@ -170,10 +170,13 @@
       if (!quiet) app.innerHTML = "<p class='muted'>Loading live rank…</p>";
       try {
         const q = "?autosubs=" + state.autosubs;
-        const [entry, leagues] = await Promise.all([
-          api("/entries/" + entryId + "/live" + q),
-          api("/entries/" + entryId + "/mini-leagues")
-        ]);
+        const entry = await api("/entries/" + entryId + "/live" + q);
+        let leagues = { leagues: [] };
+        try {
+          leagues = await api("/entries/" + entryId + "/mini-leagues");
+        } catch (leagueErr) {
+          console.warn("mini-leagues failed", leagueErr);
+        }
         state.entryId = entryId;
         state.entry = entry;
         state.leagues = leagues.leagues || [];

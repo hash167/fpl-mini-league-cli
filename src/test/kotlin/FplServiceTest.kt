@@ -61,7 +61,7 @@ class FplServiceTest {
             ),
             classicLeagues = listOf(
                 LeagueRef(1, "Mini Friends"),
-                LeagueRef(2, "Overall"),
+                LeagueRef(2, "Overall", leagueType = "s"),
                 LeagueRef(3, "Paged")
             ),
             standings = mapOf(
@@ -89,6 +89,41 @@ class FplServiceTest {
         assertEquals(listOf(1), result.leagues.map { it.id })
         assertEquals("Mini Friends", result.leagues.single().name)
         assertEquals(12, result.leagues.single().entryCount)
+        assertEquals(setOf(1, 3), client.standingsRequested.toSet())
+    }
+
+    @Test
+    fun `miniLeagues skips system leagues and standings errors`() {
+        val client = FakeFplClient(
+            bootstrap = parse(
+                """{"events":[{"id":1,"is_current":true}]}"""
+            ),
+            classicLeagues = listOf(
+                LeagueRef(14, "Liverpool", leagueType = "s"),
+                LeagueRef(53998, "Fantasy Football Scout"),
+                LeagueRef(136268, "Play Now Cry Later")
+            ),
+            standings = mapOf(
+                136268 to LeagueStandingsPage(
+                    results = listOf(StandingRow(1, 5498977, "Hashim's Team", "Hashim C")),
+                    hasNext = false,
+                    totalEntries = 10
+                )
+            ),
+            standingsErrors = mapOf(
+                53998 to FplApiException(
+                    "FPL API request failed (500): https://fantasy.premierleague.com/api/leagues-classic/53998/standings/?page_standings=1",
+                    500
+                )
+            )
+        )
+
+        val result = FplService(client).miniLeagues(5498977)
+
+        assertEquals(listOf(136268), result.leagues.map { it.id })
+        assertEquals("Play Now Cry Later", result.leagues.single().name)
+        assertFalse(client.standingsRequested.contains(14))
+        assertEquals(listOf(53998, 136268), client.standingsRequested)
     }
 
     @Test
@@ -166,12 +201,17 @@ class FakeFplClient(
     private val livePoints: Map<Int, Int> = emptyMap(),
     private val picks: Map<Pair<Int, Int>, List<PickRow>> = emptyMap(),
     private val entryJson: JsonObject = JsonObject(emptyMap()),
-    private val throwEntryEvent: Boolean = false
+    private val throwEntryEvent: Boolean = false,
+    private val standingsErrors: Map<Int, Exception> = emptyMap()
 ) : FplClient {
+    val standingsRequested = mutableListOf<Int>()
     override fun bootstrap(): JsonObject = bootstrap
     override fun userClassicLeagues(entryId: Int): List<LeagueRef> = classicLeagues
-    override fun leagueStandingsPage(leagueId: Int, page: Int): LeagueStandingsPage =
-        standings.getValue(leagueId)
+    override fun leagueStandingsPage(leagueId: Int, page: Int): LeagueStandingsPage {
+        standingsRequested += leagueId
+        standingsErrors[leagueId]?.let { throw it }
+        return standings.getValue(leagueId)
+    }
     override fun eventLiveElementPoints(eventId: Int): Map<Int, Int> = livePoints
     override fun entry(entryId: Int): JsonObject = entryJson
     override fun entryEvent(entryId: Int, eventId: Int): JsonObject {

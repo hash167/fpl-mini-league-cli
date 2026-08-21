@@ -47,7 +47,8 @@ class FplApi(
             val obj = item as? JsonObject ?: return@mapNotNull null
             val id = obj.int("id") ?: return@mapNotNull null
             val name = obj.str("name") ?: "League $id"
-            LeagueRef(id = id, name = name)
+            val leagueType = obj.str("league_type") ?: "x"
+            LeagueRef(id = id, name = name, leagueType = leagueType)
         }
     }
 
