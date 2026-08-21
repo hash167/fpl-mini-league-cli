@@ -6,7 +6,7 @@ Kotlin CLI and Dropwizard webapp for **live FPL tracking** during a gameweek (th
 - Open a classic league by picker (mini leagues: `< 50` teams and no next standings page) **or** by numeric league ID
 - Live league table: live rank, official rank, live total, GW net/gross, remaining, overall rank, value, chip (WC/FH/BB/TC/AM)
 - Player-by-player XI + bench with minutes, raw points, projected vs confirmed bonus, C/VC, auto-sub in/out
-- Live games strip and 90s auto-refresh while fixtures are in progress
+- Live games strip (your players, C/VC, bench, minutes, contribution) and 90s auto-refresh while fixtures are in progress
 - Pre-season / before kickoff still renders the table from the official FPL API (zeros, remaining = full XI)
 
 Uses only the official FPL API. Bootstrap, fixtures, and event-live payloads are cached in memory for ~20s.
@@ -113,8 +113,8 @@ Covers mini-league filtering, captain/bench multipliers, BPS bonus projection, a
 Multi-stage image (Temurin 17 JDK build → Temurin 17 JRE runtime), port 8080:
 
 ```bash
-docker build -t fpl-web:1.1 .
-docker run --rm -p 8080:8080 fpl-web:1.1
+docker build -t fpl-web:1.3 .
+docker run --rm -p 8080:8080 fpl-web:1.3
 ```
 
 `Dockerfile.runtime` is a JRE-only image if you already built `fpl-web-1.0.jar`.
@@ -126,8 +126,8 @@ Manifests live in `k8s/`. They create namespace `fpl`, one replica, and a NodePo
 On a machine that can build images:
 
 ```bash
-docker build -t fpl-web:1.1 .
-docker save fpl-web:1.1 | ssh randomnumber01@100.67.63.33 'sudo k3s ctr images import -'
+docker build -t fpl-web:1.3 .
+docker save fpl-web:1.3 | ssh randomnumber01@100.67.63.33 'sudo k3s ctr images import -'
 ```
 
 Apply manifests (from this repo):
