@@ -76,7 +76,8 @@ data class PlayerLiveRow(
     val autoSubIn: Boolean = false,
     val autoSubOut: Boolean = false,
     val onBench: Boolean = false,
-    val fixtureStatus: String = ""
+    val fixtureStatus: String = "",
+    val eo: Double? = null
 )
 
 data class MiniLeaguesResponse(
@@ -183,7 +184,11 @@ data class EntryLiveResponse(
     val captainStatus: String,
     val live: Boolean,
     val fixtures: List<FixtureView>,
-    val players: List<PlayerLiveRow>
+    val players: List<PlayerLiveRow>,
+    val liveOverallRankEstimate: Long? = null,
+    val liveOverallEstimateAvailable: Boolean = false,
+    val liveOverallSampleAgeSeconds: Long? = null,
+    val liveOverallSampleCount: Int? = null
 )
 
 data class FixtureView(
@@ -269,4 +274,25 @@ data class AutoSubPick(
     val fixtureStarted: Boolean,
     val isCaptain: Boolean,
     val isViceCaptain: Boolean
+)
+
+data class LiveOverallEstimateStatus(
+    val warm: Boolean,
+    val available: Boolean,
+    val sampleAgeSeconds: Long?,
+    val sampleCount: Int,
+    val targetSampleCount: Int,
+    val totalPlayers: Int?,
+    val gameweek: Int?,
+    val refreshing: Boolean,
+    val bands: List<LiveOverallBandStatus>,
+    val note: String
+)
+
+data class LiveOverallBandStatus(
+    val index: Int,
+    val startRank: Int,
+    val endRank: Int,
+    val nB: Int,
+    val nSlice: Int
 )
