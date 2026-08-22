@@ -189,6 +189,9 @@ class FplServiceTest {
         assertEquals(0, live.liveTotal)
         assertEquals(false, live.live)
         assertEquals(emptyList(), live.players)
+        assertEquals("official", live.overallRankLabel)
+        assertEquals(false, live.liveOverallEstimateAvailable)
+        assertEquals(null, live.liveOverallRankEstimate)
     }
 
     private fun parse(raw: String): JsonObject = json.parseToJsonElement(raw).jsonObject
@@ -210,7 +213,7 @@ class FakeFplClient(
     override fun leagueStandingsPage(leagueId: Int, page: Int): LeagueStandingsPage {
         standingsRequested += leagueId
         standingsErrors[leagueId]?.let { throw it }
-        return standings.getValue(leagueId)
+        return standings[leagueId] ?: throw FplApiException("no standings for $leagueId", 500)
     }
     override fun eventLiveElementPoints(eventId: Int): Map<Int, Int> = livePoints
     override fun entry(entryId: Int): JsonObject = entryJson
