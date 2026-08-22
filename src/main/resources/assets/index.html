@@ -142,6 +142,17 @@
     function fmt(n) { return n == null || n === "" ? "—" : n; }
     function fmtMoney(n) { return n == null ? "—" : "£" + Number(n).toFixed(1) + "m"; }
     function fmtRank(n) { return n == null ? "—" : Number(n).toLocaleString(); }
+    function fmtAge(seconds) {
+      if (seconds == null) return "—";
+      const s = Number(seconds);
+      if (s < 60) return s + "s ago";
+      if (s < 3600) return Math.floor(s / 60) + "m ago";
+      return (s / 3600).toFixed(1).replace(/\.0$/, "") + "h ago";
+    }
+    function fmtEo(eo) {
+      if (eo == null || eo === "") return "—";
+      return (Number(eo) * 100).toFixed(0) + "%";
+    }
 
     async function api(path) {
       const res = await fetch(path);
@@ -284,6 +295,10 @@
         ["Captain", e.captainStatus || "—"],
         ["Chip", e.activeChip || "—"],
         ["Overall rank", fmtRank(e.overallRank) + " (official)"],
+        ["Live overall", e.liveOverallEstimateAvailable
+          ? (fmtRank(e.liveOverallRankEstimate) + " (estimate)")
+          : "estimate unavailable"],
+        ["Sample age", fmtAge(e.liveOverallSampleAgeSeconds)],
         ["Value", fmtMoney(e.teamValue)],
         ["Bank", fmtMoney(e.bank)],
         ["Free transfers", fmt(e.freeTransfers)],
@@ -460,7 +475,7 @@
         " · hit " + fmt(p.transferCost) + " · live total " + fmt(p.liveTotal) +
         (p.activeChip ? (" · " + p.activeChip) : "") + "</p>"));
       const table = el("<table class='live players'><thead><tr>" +
-        "<th></th><th>Player</th><th class='num'>Min</th><th class='num'>Raw</th><th class='num'>Bonus</th><th class='num'>×</th><th class='num'>Pts</th>" +
+        "<th></th><th>Player</th><th class='num'>Min</th><th class='num'>Raw</th><th class='num'>Bonus</th><th class='num'>×</th><th class='num'>EO</th><th class='num'>Pts</th>" +
         "</tr></thead><tbody></tbody></table>");
       const tbody = table.querySelector("tbody");
       (p.players || []).forEach((pl) => {
@@ -471,7 +486,7 @@
           "</td><td>" + escapeHtml(pl.webName || pl.name) + (pl.team ? " <span class='muted'>" + escapeHtml(pl.team) + "</span>" : "") +
           tag + sub + "</td><td class='num'>" + pl.minutes + "</td><td class='num'>" + pl.rawPoints +
           "</td><td class='num'>" + bonus + "</td><td class='num'>" + pl.multiplier +
-          "</td><td class='num'>" + pl.contribution + "</td></tr>");
+          "</td><td class='num'>" + fmtEo(pl.eo) + "</td><td class='num'>" + pl.contribution + "</td></tr>");
         tbody.appendChild(tr);
       });
       box.appendChild(table);
