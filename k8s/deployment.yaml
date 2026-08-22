@@ -19,7 +19,7 @@ spec:
         kubernetes.io/hostname: randomnumber01
       containers:
         - name: fpl-web
-          image: docker.io/library/fpl-web:1.3
+          image: docker.io/library/fpl-web:1.6
           imagePullPolicy: IfNotPresent
           ports:
             - name: http
