@@ -74,6 +74,10 @@ fun buildPlayerLiveRows(
 
 class FplService(private val api: FplClient) {
     private val pool = Executors.newFixedThreadPool(8)
+    private val overallCache = LiveOverallSampleCache(
+        api = api,
+        evaluate = { entryId, gameweek -> evaluateSampleEntry(entryId, gameweek) }
+    )
 
     fun currentGameweek(): Int {
         return currentGameweekId(api.bootstrap())
@@ -208,7 +212,7 @@ class FplService(private val api: FplClient) {
             entryId = entryId,
             gameweek = gameweek,
             livePoints = squad.gwGross,
-            players = squad.players,
+            players = attachEo(squad.players, overallCache.peek()),
             managerName = profile.first.ifBlank { null },
             teamName = profile.second.ifBlank { null },
             gwGross = squad.gwGross,
@@ -237,6 +241,10 @@ class FplService(private val api: FplClient) {
         val gw = gameweek ?: currentGameweek()
         val picks = entryPicksLive(entryId, gw, applyAutosubs)
         val snapshot = liveSnapshot(gw)
+        overallCache.requestRefresh(gw)
+        val estimate = overallCache.peek()
+        val now = System.currentTimeMillis()
+        val players = attachEo(picks.players, estimate)
         return EntryLiveResponse(
             entryId = entryId,
             gameweek = gw,
@@ -262,7 +270,52 @@ class FplService(private val api: FplClient) {
             captainStatus = picks.captainStatus,
             live = snapshot.live,
             fixtures = snapshot.fixtureViews,
-            players = picks.players
+            players = players,
+            liveOverallRankEstimate = estimate?.rankFor(picks.liveTotal),
+            liveOverallEstimateAvailable = estimate?.available == true && estimate.rankFor(picks.liveTotal) != null,
+            liveOverallSampleAgeSeconds = estimate?.ageSeconds(now),
+            liveOverallSampleCount = estimate?.sampleCount
+        )
+    }
+
+    fun liveOverallEstimateStatus(gameweek: Int? = null): LiveOverallEstimateStatus {
+        val gw = try {
+            gameweek ?: currentGameweek()
+        } catch (_: Exception) {
+            gameweek
+        }
+        if (gw != null) overallCache.requestRefresh(gw)
+        return overallCache.status(gw)
+    }
+
+    private fun attachEo(players: List<PlayerLiveRow>, estimate: LiveOverallSnapshot?): List<PlayerLiveRow> {
+        if (estimate == null || !estimate.available) return players
+        return players.map { row -> row.copy(eo = estimate.eoFor(row.element)) }
+    }
+
+    private fun evaluateSampleEntry(entryId: Int, gameweek: Int): SampledLive? {
+        val snapshot = liveSnapshot(gameweek)
+        val raw = try {
+            api.entryEvent(entryId, gameweek)
+        } catch (_: Exception) {
+            return null
+        }
+        if (raw.isEmpty()) return null
+        val event = parseEntryEventPicks(raw)
+        val squad = evaluateLiveSquad(
+            picks = event.picks,
+            history = event.history,
+            activeChip = event.activeChip,
+            officialSubs = event.automaticSubs,
+            players = snapshot.players,
+            liveStats = snapshot.liveStats,
+            fixtures = snapshot.fixtures,
+            bonusSheet = snapshot.bonusSheet,
+            applyAutosubs = true
+        )
+        return SampledLive(
+            liveTotal = squad.liveTotal,
+            multipliers = squad.players.associate { it.element to it.multiplier }
         )
     }
 
