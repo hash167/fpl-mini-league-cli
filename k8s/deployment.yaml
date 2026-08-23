@@ -1,0 +1,47 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: fpl-web
+  namespace: fpl
+  labels:
+    app: fpl-web
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: fpl-web
+  template:
+    metadata:
+      labels:
+        app: fpl-web
+    spec:
+      nodeSelector:
+        kubernetes.io/hostname: randomnumber01
+      containers:
+        - name: fpl-web
+          image: docker.io/library/fpl-web:1.6
+          imagePullPolicy: IfNotPresent
+          ports:
+            - name: http
+              containerPort: 8080
+          resources:
+            requests:
+              cpu: 100m
+              memory: 256Mi
+            limits:
+              cpu: 500m
+              memory: 512Mi
+          readinessProbe:
+            httpGet:
+              path: /health
+              port: http
+            initialDelaySeconds: 20
+            timeoutSeconds: 5
+            periodSeconds: 10
+          livenessProbe:
+            httpGet:
+              path: /health
+              port: http
+            initialDelaySeconds: 40
+            timeoutSeconds: 5
+            periodSeconds: 20

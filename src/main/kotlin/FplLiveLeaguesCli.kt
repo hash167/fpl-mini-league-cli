@@ -1,7 +1,6 @@
 import com.github.ajalt.clikt.core.CliktCommand
 import com.github.ajalt.clikt.parameters.arguments.argument
 import com.github.ajalt.clikt.parameters.types.int
-import kotlinx.serialization.json.JsonObject
 import org.jline.terminal.TerminalBuilder
 
 class FplLiveLeaguesCli : CliktCommand(
@@ -11,29 +10,10 @@ class FplLiveLeaguesCli : CliktCommand(
     private val teamId by argument(help = "Your FPL entry/team id").int()
 
     override fun run() {
-        val api = FplApi()
-        val bootstrap = api.bootstrap()
-        val currentGameweek = currentGameweekId(bootstrap)
-            ?: throw IllegalStateException("Could not determine current gameweek from FPL bootstrap data.")
+        val service = FplService(FplApi())
+        val currentGameweek = service.currentGameweek()
 
-        val leagues = api.userClassicLeagues(teamId)
-        if (leagues.isEmpty()) {
-            echo("No classic leagues found for team id $teamId.")
-            return
-        }
-
-        val miniLeagues = leagues.mapNotNull { league ->
-            val standingsPage = api.leagueStandingsPage(league.id, 1)
-            val entryCount = standingsPage.totalEntries ?: standingsPage.results.size
-            val isMiniLeague = entryCount < 50 && !standingsPage.hasNext
-            if (!isMiniLeague) return@mapNotNull null
-            LeagueSummary(
-                id = league.id,
-                name = league.name,
-                entryCount = entryCount,
-                standings = standingsPage.results
-            )
-        }
+        val miniLeagues = service.miniLeagueSummaries(teamId)
 
         if (miniLeagues.isEmpty()) {
             echo("No mini leagues (<50 teams) found for team id $teamId.")
@@ -53,34 +33,7 @@ class FplLiveLeaguesCli : CliktCommand(
                     val selectedLeague = leagueSelection.value
                     echo("")
                     echo("Loading live points for ${selectedLeague.name} (GW$currentGameweek)...")
-                    val liveElementPoints = api.eventLiveElementPoints(currentGameweek)
-                    val playerLookup = playerLookup(bootstrap)
-
-                    val teamsWithLive = selectedLeague.standings.map { standing ->
-                        val picks = api.entryPicks(standing.entryId, currentGameweek)
-                        val playerRows = picks.map { pick ->
-                            val details = playerLookup[pick.element]
-                            val rawPoints = liveElementPoints[pick.element] ?: 0
-                            val contribution = rawPoints * pick.multiplier
-                            PlayerLiveRow(
-                                element = pick.element,
-                                name = details?.name ?: "Unknown (${pick.element})",
-                                team = details?.teamShortName ?: "",
-                                position = pick.position,
-                                multiplier = pick.multiplier,
-                                rawPoints = rawPoints,
-                                contribution = contribution,
-                                captain = pick.isCaptain,
-                                viceCaptain = pick.isViceCaptain
-                            )
-                        }.sortedBy { it.position }
-
-                        TeamLiveSummary(
-                            standing = standing,
-                            livePoints = playerRows.sumOf { it.contribution },
-                            players = playerRows
-                        )
-                    }
+                    val teamsWithLive = service.liveTeamsForStandings(selectedLeague.standings, currentGameweek)
 
                     while (true) {
                         val selectedTeam = selectWithNavigation(
@@ -131,40 +84,6 @@ private fun showTeamDetails(selectedTeam: TeamLiveSummary) {
                 "raw ${player.rawPoints} x${player.multiplier} = ${player.contribution}"
         )
     }
-}
-
-internal fun currentGameweekId(bootstrap: JsonObject): Int? {
-    val events = bootstrap.arr("events").mapNotNull { it as? JsonObject }
-    val current = events.firstOrNull { it.bool("is_current") == true }?.int("id")
-    if (current != null) return current
-    val next = events.firstOrNull { it.bool("is_next") == true }?.int("id")
-    if (next != null) return next
-    return events.maxOfOrNull { it.int("id") ?: 0 }?.takeIf { it > 0 }
-}
-
-internal fun playerLookup(bootstrap: JsonObject): Map<Int, PlayerRef> {
-    val teams = bootstrap.arr("teams")
-        .mapNotNull { it as? JsonObject }
-        .mapNotNull { team ->
-            val id = team.int("id") ?: return@mapNotNull null
-            val short = team.str("short_name") ?: return@mapNotNull null
-            id to short
-        }
-        .toMap()
-
-    return bootstrap.arr("elements")
-        .mapNotNull { it as? JsonObject }
-        .mapNotNull { player ->
-            val id = player.int("id") ?: return@mapNotNull null
-            val firstName = player.str("first_name").orEmpty()
-            val secondName = player.str("second_name").orEmpty()
-            val fallback = player.str("web_name").orEmpty()
-            val fullName = "$firstName $secondName".trim().ifBlank { fallback }.ifBlank { "Player $id" }
-            val teamId = player.int("team")
-            val teamShortName = teamId?.let { teams[it] }.orEmpty()
-            id to PlayerRef(name = fullName, teamShortName = teamShortName)
-        }
-        .toMap()
 }
 
 private fun <T> selectWithNavigation(
@@ -308,7 +227,6 @@ private fun readKeyPress(terminal: org.jline.terminal.Terminal): KeyPress {
             val second = reader.read(250L)
             if (second == '['.code || second == 'O'.code) {
                 var third = reader.read(250L)
-                // Handle CSI with modifiers, e.g. ESC [ 1 ; 2 A
                 if (second == '['.code && third in '0'.code..'9'.code) {
                     while (third != -1 && third !in setOf('A'.code, 'B'.code, 'C'.code, 'D'.code)) {
                         third = reader.read(250L)

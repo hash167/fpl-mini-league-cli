@@ -1,0 +1,16 @@
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: fpl-web
+  namespace: fpl
+spec:
+  rules:
+    - http:
+        paths:
+          - path: /fpl
+            pathType: Prefix
+            backend:
+              service:
+                name: fpl-web
+                port:
+                  number: 8080
