@@ -148,6 +148,11 @@ curl http://100.67.63.33:30810/health
 
 The Deployment pins the pod to `randomnumber01` so a locally imported image does not need to exist on the worker. An optional Ingress (`k8s/ingress.yaml`) exposes path `/fpl` on the Traefik LoadBalancer; the supported access path is the NodePort.
 
+### Honeycomb / OpenTelemetry
+
+`fpl-web:1.7` ships the OpenTelemetry Java agent. When secret `fpl-honeycomb` (`HONEYCOMB_API_KEY`) is present in namespace `fpl`, the entrypoint enables the agent and exports traces, metrics, and logs over OTLP (`https://api.honeycomb.io`). HTTP requests, sample-refresh work (`fpl.sample.refresh`), HTTP/refresh/uncaught-error counters, and a `fpl.up` gauge are included. A shutdown hook flushes on SIGTERM (k8s pod stop). `kill -9` / OOM can still drop in-flight telemetry. Missing key: the app starts with the agent off (no crash). The raw key is never stored in Deployment YAML (entrypoint builds `OTEL_EXPORTER_OTLP_HEADERS` from the env var).
+
+
 
 ## Live overall estimate
 
@@ -231,6 +236,8 @@ Ties stay tied: people at your exact `T` do not count as above you. If the sampl
 *Rank comes from the live-total histogram, not from summing player edges.*
 
 GET `/entries/{id}/live` never waits on a cold 315-fetch. Official rank is returned immediately. Estimate + EO attach only when the cache is already warm. First use (and then hourly) kicks a background refresh with backoff.
+
+The last successful sample is atomically written to `data/live-overall-snapshot.json` (that is `/app/data/live-overall-snapshot.json` in the container; override with `overallSnapshotPath` in `config.yml` or `FPL_OVERALL_SNAPSHOT`). A process or pod restart loads it so estimate/EO attach on the first request; stale-while-revalidate still kicks a refresh if the file is older than 1h or the gameweek changed. Missing, corrupt, or thin files stay cold (`available=false`) and never invent a rank. Persist/load failures are logged and ignored. k8s mounts a hostPath volume (`/var/lib/fpl-web` on randomnumber01) at `/app/data` so rollouts keep the file, not only container crashes.
 
 ### m, EO, and edge
 
