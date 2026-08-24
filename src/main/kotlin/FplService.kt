@@ -72,12 +72,19 @@ fun buildPlayerLiveRows(
     }.sortedBy { it.position }
 }
 
-class FplService(private val api: FplClient) {
+class FplService(
+    private val api: FplClient,
+    overallSnapshotPath: String? = null,
+    pricesSnapshotPath: String? = DEFAULT_PRICES_SNAPSHOT_PATH,
+    private val clock: () -> Long = { System.currentTimeMillis() }
+) {
     private val pool = Executors.newFixedThreadPool(8)
     private val overallCache = LiveOverallSampleCache(
         api = api,
-        evaluate = { entryId, gameweek -> evaluateSampleEntry(entryId, gameweek) }
+        evaluate = { entryId, gameweek -> evaluateSampleEntry(entryId, gameweek) },
+        snapshotPath = overallSnapshotPath
     )
+    private val priceStore = OfficialPriceSnapshotStore(pricesSnapshotPath, clock)
 
     fun currentGameweek(): Int {
         return currentGameweekId(api.bootstrap())
@@ -137,7 +144,11 @@ class FplService(private val api: FplClient) {
         val snapshot = liveSnapshot(gw)
         val paged = pageStandings(leagueId, LIVE_LEAGUE_CAP)
         val evaluated = evaluateStandings(paged.results, snapshot, applyAutosubs)
-        val ranked = assignLiveRanks(evaluated)
+        overallCache.requestRefresh(gw)
+        val estimate = overallCache.peek()
+        val ranked = assignLiveRanks(evaluated).map { team ->
+            team.copy(liveOverallRankEstimate = estimate?.rankFor(team.liveTotal))
+        }
         return LiveLeagueResponse(
             leagueId = leagueId,
             gameweek = gw,
@@ -276,6 +287,59 @@ class FplService(private val api: FplClient) {
             liveOverallSampleAgeSeconds = estimate?.ageSeconds(now),
             liveOverallSampleCount = estimate?.sampleCount
         )
+    }
+
+    fun liveBoard(gameweek: Int? = null): LiveBoardResponse {
+        val gw = gameweek ?: currentGameweek()
+        val snapshot = liveSnapshot(gw)
+        val rows = snapshot.players.values.map { info ->
+            val live = snapshot.liveStats[info.id]
+            val tin = info.transfersInEvent ?: 0
+            val tout = info.transfersOutEvent ?: 0
+            LiveBoardPlayer(
+                id = info.id,
+                webName = info.webName,
+                team = info.teamShortName,
+                position = elementTypeName(info.elementType),
+                minutes = live?.minutes ?: 0,
+                livePoints = live?.totalPoints ?: 0,
+                nowCost = info.nowCost ?: 0,
+                costChangeEvent = info.costChangeEvent ?: 0,
+                transfersInEvent = tin,
+                transfersOutEvent = tout,
+                netTransfers = tin - tout,
+                selectedBy = info.selectedBy,
+                priceEstimate = "stable",
+                priceEstimateReason = ""
+            )
+        }
+        return LiveBoardResponse(
+            gameweek = gw,
+            live = snapshot.live,
+            fixtures = snapshot.fixtureViews,
+            estimateNote = PRICE_ESTIMATE_NOTE,
+            players = applyPriceEstimates(rows)
+        )
+    }
+
+
+    fun estimatePriceRises(): PriceRiseEstimatesResponse {
+        val bootstrap = api.bootstrap()
+        val gw = currentGameweekId(bootstrap)
+            ?: throw IllegalStateException("Could not determine current gameweek from FPL bootstrap data.")
+        return PriceRiseEstimatesResponse(
+            computedAt = OfficialPriceSnapshotStore.iso(clock()),
+            gameweek = gw,
+            estimateNote = PRICE_ESTIMATE_NOTE + " Estimate before tonight's official change.",
+            rises = estimateLikelyRises(parsePlayerInfo(bootstrap).values)
+        )
+    }
+
+    fun officialPrices(): OfficialPricesResponse = priceStore.latest()
+
+    fun refreshOfficialPrices(): OfficialPricesResponse {
+        val players = parsePlayerInfo(api.bootstrap()).values
+        return priceStore.refresh(players)
     }
 
     fun liveOverallEstimateStatus(gameweek: Int? = null): LiveOverallEstimateStatus {
