@@ -1,0 +1,30 @@
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: fpl-official-prices
+  namespace: fpl
+spec:
+  schedule: "30 3 * * *"
+  timeZone: Europe/London
+  concurrencyPolicy: Forbid
+  successfulJobsHistoryLimit: 2
+  failedJobsHistoryLimit: 3
+  jobTemplate:
+    spec:
+      backoffLimit: 2
+      template:
+        spec:
+          restartPolicy: OnFailure
+          nodeSelector:
+            kubernetes.io/hostname: randomnumber01
+          containers:
+            - name: refresh
+              image: busybox:1.36
+              imagePullPolicy: IfNotPresent
+              env:
+                - name: CRON_TZ
+                  value: Europe/London
+              command:
+                - /bin/sh
+                - -c
+                - wget -qO- http://fpl-web.fpl.svc.cluster.local:8080/live/prices/refresh

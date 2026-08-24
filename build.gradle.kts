@@ -22,6 +22,7 @@ dependencies {
     implementation("org.jetbrains.kotlinx:kotlinx-serialization-json:1.6.3")
     implementation("io.dropwizard:dropwizard-core:$dropwizardVersion")
     implementation("com.fasterxml.jackson.module:jackson-module-kotlin:2.17.1")
+    implementation("io.opentelemetry:opentelemetry-api:1.49.0")
     testImplementation(kotlin("test"))
 }
 

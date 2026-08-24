@@ -47,7 +47,13 @@ data class PlayerInfo(
     val webName: String,
     val teamId: Int,
     val teamShortName: String,
-    val elementType: Int
+    val elementType: Int,
+    val nowCost: Int? = null,
+    val costChangeEvent: Int? = null,
+    val costChangeStart: Int? = null,
+    val transfersInEvent: Int? = null,
+    val transfersOutEvent: Int? = null,
+    val selectedBy: String? = null
 )
 
 data class TeamLiveSummary(
@@ -77,7 +83,10 @@ data class PlayerLiveRow(
     val autoSubOut: Boolean = false,
     val onBench: Boolean = false,
     val fixtureStatus: String = "",
-    val eo: Double? = null
+    val eo: Double? = null,
+    val nowCost: Double? = null,
+    val costChangeEvent: Double? = null,
+    val costChangeStart: Double? = null
 )
 
 data class MiniLeaguesResponse(
@@ -120,6 +129,7 @@ data class TeamLiveStanding(
     val transferCost: Int = 0,
     val playersRemaining: Int = 0,
     val overallRank: Int? = null,
+    val liveOverallRankEstimate: Long? = null,
     val freeTransfers: Int? = null,
     val teamValue: Double? = null,
     val bank: Double? = null,
@@ -295,4 +305,53 @@ data class LiveOverallBandStatus(
     val endRank: Int,
     val nB: Int,
     val nSlice: Int
+)
+
+
+data class LiveBoardResponse(
+    val gameweek: Int,
+    val live: Boolean,
+    val fixtures: List<FixtureView> = emptyList(),
+    val estimateNote: String,
+    val players: List<LiveBoardPlayer>
+)
+
+data class LiveBoardPlayer(
+    val id: Int,
+    val webName: String,
+    val team: String,
+    val position: String,
+    val minutes: Int,
+    val livePoints: Int,
+    val nowCost: Int,
+    val costChangeEvent: Int,
+    val transfersInEvent: Int,
+    val transfersOutEvent: Int,
+    val netTransfers: Int,
+    val selectedBy: String?,
+    val priceEstimate: String,
+    val priceEstimateReason: String
+)
+
+
+data class PriceRiseEstimate(
+    val id: Int,
+    val webName: String,
+    val team: String,
+    val position: String,
+    val nowCost: Int,
+    val nowPounds: String,
+    val netTransfers: Int,
+    val transfersInEvent: Int,
+    val transfersOutEvent: Int,
+    val selectedBy: String?,
+    val priceEstimate: String,
+    val priceEstimateReason: String
+)
+
+data class PriceRiseEstimatesResponse(
+    val computedAt: String,
+    val gameweek: Int,
+    val estimateNote: String,
+    val rises: List<PriceRiseEstimate>
 )

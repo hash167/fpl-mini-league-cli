@@ -1,3 +1,5 @@
+import java.nio.file.Files
+import java.nio.file.attribute.PosixFilePermissions
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
@@ -125,8 +127,6 @@ class LiveOverallEstimatorTest {
             mgr(6, 20_000, 2, 80),
             mgr(7, 30_000, 2, 70)
         )
-        // people(120)=500, people(110)=3000, people(100)=500, people(90)=6000, people(80)=45000, people(70)=45000
-        // Tiny fixture: relax the production thin-sample bar so the histogram math is what we assert.
         assertEquals(1L + 500L, estimatedOverallRank(110, samples, bands, minPopulatedBands = 3, minSuccessfulSamples = 7))
         assertEquals(1L + 500L + 3_000L, estimatedOverallRank(100, samples, bands, minPopulatedBands = 3, minSuccessfulSamples = 7))
         val atNinety = estimatedOverallRank(90, samples, bands, minPopulatedBands = 3, minSuccessfulSamples = 7)
@@ -185,7 +185,6 @@ class LiveOverallEstimatorTest {
             SampledManager(2, 2_000, 1, 90, mapOf(7 to 1))
         )
         val eo = effectiveOwnership(7, samples, bands)!!
-        // weights 1000 and 9000 → (1000*2 + 9000*1) / 10000 = 1.1
         assertEquals(1.1, eo, 1e-9)
         assertEquals(0.0, effectiveOwnership(99, samples, bands)!!)
         assertNull(effectiveOwnership(7, emptyList(), bands))
@@ -279,6 +278,173 @@ class LiveOverallSampleCacheTest {
         assertTrue(snap.sampleCount < 30)
         assertFalse(snap.available)
         assertNull(snap.rankFor(50))
+    }
+
+    @Test
+    fun `successful refresh persists and a new cache reloads people rank and EO`() {
+        val dir = Files.createTempDirectory("overall-snap-roundtrip")
+        val path = dir.resolve("live-overall-snapshot.json").toString()
+        try {
+            val bootstrap = parse("""{"total_players":8000,"events":[{"id":4,"is_current":true}]}""")
+            val client = RecordingOverallClient(
+                bootstrap = bootstrap,
+                pages = mapOf(
+                    6 to pageOf(StandingRow(251, 101, "A", "Ann")),
+                    16 to pageOf(StandingRow(751, 102, "D", "Dot")),
+                    56 to pageOf(StandingRow(2751, 201, "B", "Bob")),
+                    126 to pageOf(StandingRow(6251, 301, "C", "Cam"))
+                )
+            )
+            val lives = mapOf(
+                101 to SampledLive(120, mapOf(7 to 2)),
+                102 to SampledLive(110, mapOf(7 to 1)),
+                201 to SampledLive(110, mapOf(7 to 1)),
+                301 to SampledLive(90, mapOf(7 to 0))
+            )
+            val writer = LiveOverallSampleCache(
+                api = client,
+                evaluate = { id, _ -> lives[id] },
+                samplesPerBand = 2,
+                pageDelayMs = 0,
+                minPopulatedBands = 1,
+                minSuccessfulSamples = 1,
+                sleeper = {},
+                snapshotPath = path
+            )
+            val saved = writer.refreshNow(4)
+            assertTrue(saved.available)
+            assertTrue(Files.isRegularFile(dir.resolve("live-overall-snapshot.json")))
+
+            val reader = LiveOverallSampleCache(
+                api = RecordingOverallClient(parse("""{"total_players":1}""")),
+                evaluate = { _, _ -> null },
+                samplesPerBand = 2,
+                pageDelayMs = 0,
+                minPopulatedBands = 1,
+                minSuccessfulSamples = 1,
+                sleeper = {},
+                snapshotPath = path
+            )
+            val loaded = requireNotNull(reader.peek())
+            assertTrue(loaded.available)
+            assertEquals(saved.loadedAtMs, loaded.loadedAtMs)
+            assertEquals(saved.gameweek, loaded.gameweek)
+            assertEquals(saved.totalPlayers, loaded.totalPlayers)
+            assertEquals(saved.bands, loaded.bands)
+            assertEquals(saved.samples, loaded.samples)
+            assertEquals(peopleAtTotal(110, saved.samples, saved.bands), peopleAtTotal(110, loaded.samples, loaded.bands), 1e-9)
+            assertEquals(saved.rankFor(110), loaded.rankFor(110))
+            assertEquals(saved.eoFor(7), loaded.eoFor(7))
+        } finally {
+            dir.toFile().deleteRecursively()
+        }
+    }
+
+    @Test
+    fun `corrupt or incomplete snapshot file stays cold`() {
+        val dir = Files.createTempDirectory("overall-snap-corrupt")
+        try {
+            val missing = LiveOverallSampleCache(
+                api = RecordingOverallClient(parse("""{"total_players":100}""")),
+                evaluate = { _, _ -> null },
+                pageDelayMs = 0,
+                sleeper = {},
+                snapshotPath = dir.resolve("missing.json").toString()
+            )
+            assertNull(missing.peek())
+
+            val bad = dir.resolve("corrupt.json")
+            Files.writeString(bad, "{not-json")
+            val corrupt = LiveOverallSampleCache(
+                api = RecordingOverallClient(parse("""{"total_players":100}""")),
+                evaluate = { _, _ -> null },
+                pageDelayMs = 0,
+                sleeper = {},
+                snapshotPath = bad.toString()
+            )
+            assertNull(corrupt.peek())
+
+            val thinFields = dir.resolve("partial.json")
+            Files.writeString(thinFields, """{"loadedAtMs":1,"gameweek":4}""")
+            val incomplete = LiveOverallSampleCache(
+                api = RecordingOverallClient(parse("""{"total_players":100}""")),
+                evaluate = { _, _ -> null },
+                pageDelayMs = 0,
+                sleeper = {},
+                snapshotPath = thinFields.toString()
+            )
+            assertNull(incomplete.peek())
+        } finally {
+            dir.toFile().deleteRecursively()
+        }
+    }
+
+    @Test
+    fun `thin sample on disk is unavailable and does not invent a rank`() {
+        val dir = Files.createTempDirectory("overall-snap-thin")
+        val path = dir.resolve("live-overall-snapshot.json")
+        try {
+            Files.writeString(
+                path,
+                """
+                {
+                  "loadedAtMs": 1,
+                  "gameweek": 4,
+                  "totalPlayers": 10000000,
+                  "bands": [
+                    {"index":0,"startRank":1,"endRank":1000,"nB":1,"nSlice":1000}
+                  ],
+                  "samples": [
+                    {"entryId":1,"officialRank":10,"bandIndex":0,"liveTotal":100,"multipliers":{"7":2}}
+                  ]
+                }
+                """.trimIndent()
+            )
+            val cache = LiveOverallSampleCache(
+                api = RecordingOverallClient(parse("""{"total_players":100}""")),
+                evaluate = { _, _ -> null },
+                pageDelayMs = 0,
+                sleeper = {},
+                snapshotPath = path.toString()
+            )
+            val loaded = requireNotNull(cache.peek())
+            assertFalse(loaded.available)
+            assertFalse(cache.status(4).available)
+            assertNull(loaded.rankFor(100))
+            assertNull(loaded.eoFor(7))
+        } finally {
+            dir.toFile().deleteRecursively()
+        }
+    }
+
+    @Test
+    fun `unwritable snapshot path does not throw out of refresh`() {
+        val dir = Files.createTempDirectory("overall-snap-ro")
+        try {
+            Files.setPosixFilePermissions(dir, PosixFilePermissions.fromString("r-x------"))
+            val bootstrap = parse("""{"total_players":8000}""")
+            val client = RecordingOverallClient(
+                bootstrap = bootstrap,
+                pages = mapOf(6 to pageOf(StandingRow(251, 101, "A", "Ann")))
+            )
+            val cache = LiveOverallSampleCache(
+                api = client,
+                evaluate = { _, _ -> SampledLive(50, mapOf(1 to 1)) },
+                samplesPerBand = 2,
+                pageDelayMs = 0,
+                minPopulatedBands = 1,
+                minSuccessfulSamples = 1,
+                sleeper = {},
+                snapshotPath = dir.resolve("live-overall-snapshot.json").toString()
+            )
+            val snap = cache.refreshNow(1)
+            assertEquals(1, snap.sampleCount)
+            assertTrue(snap.available)
+            assertEquals(50, snap.samples.single().liveTotal)
+        } finally {
+            Files.setPosixFilePermissions(dir, PosixFilePermissions.fromString("rwx------"))
+            dir.toFile().deleteRecursively()
+        }
     }
 
     private fun parse(raw: String): JsonObject = json.parseToJsonElement(raw).jsonObject
