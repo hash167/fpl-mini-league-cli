@@ -400,7 +400,10 @@ fun evaluateLiveSquad(
             autoSubIn = pick.element in subbedIn,
             autoSubOut = pick.element in subbedOut,
             onBench = pick.element !in playing,
-            fixtureStatus = fixtureStatus(teamFixtures)
+            fixtureStatus = fixtureStatus(teamFixtures),
+            nowCost = tenthsToMillions(info?.nowCost),
+            costChangeEvent = tenthsToMillions(info?.costChangeEvent),
+            costChangeStart = tenthsToMillions(info?.costChangeStart)
         )
     }.sortedBy { it.position }
 
