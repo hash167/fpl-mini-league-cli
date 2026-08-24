@@ -258,7 +258,13 @@ fun parsePlayerInfo(bootstrap: JsonObject): Map<Int, PlayerInfo> {
                 webName = webName.ifBlank { fullName },
                 teamId = teamId,
                 teamShortName = teams[teamId].orEmpty(),
-                elementType = player.int("element_type") ?: 0
+                elementType = player.int("element_type") ?: 0,
+                nowCost = player.int("now_cost"),
+                costChangeEvent = player.int("cost_change_event"),
+                costChangeStart = player.int("cost_change_start"),
+                transfersInEvent = player.int("transfers_in_event") ?: 0,
+                transfersOutEvent = player.int("transfers_out_event") ?: 0,
+                selectedBy = player.str("selected_by_percent")
             )
         }
         .toMap()
