@@ -9,6 +9,8 @@ server:
     appenders: []
 
 fplBaseUrl: https://fantasy.premierleague.com/api
+overallSnapshotPath: data/live-overall-snapshot.json
+pricesSnapshotPath: data/prices-snapshot.json
 
 logging:
   level: INFO

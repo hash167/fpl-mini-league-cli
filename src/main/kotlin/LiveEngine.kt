@@ -10,11 +10,45 @@ const val MIN_FWD = 1
 fun gwNet(gross: Int, transferCost: Int): Int = gross - transferCost
 
 /**
- * FPL's official season total already includes official GW points once they land.
- * Subtract those so live GW net is not double-counted.
+ * Official GW `points` are GROSS. Official `total_points` is already NET of
+ * `event_transfers_cost` once that GW is on the books. Peeling the gross GW
+ * score without restoring the hit double-counts the hit
+ * (56 - 33 + 25 = 48 instead of 56).
+ *
+ * Prefer previous completed GW `total_points` + live gwNet. If history is
+ * missing, derive the start-of-GW total from official fields.
  */
-fun liveSeasonTotal(officialTotal: Int, officialGwPoints: Int, gwNetPoints: Int): Int =
-    officialTotal - officialGwPoints + gwNetPoints
+fun startOfGwSeasonTotal(officialTotal: Int, officialGwPoints: Int, transferCost: Int): Int =
+    if (officialGwPoints > 0) officialTotal - officialGwPoints + transferCost
+    else officialTotal
+
+fun liveSeasonTotal(
+    officialTotal: Int,
+    officialGwPoints: Int,
+    gwNetPoints: Int,
+    transferCost: Int = 0,
+    previousTotal: Int? = null
+): Int {
+    val startTotal = previousTotal ?: startOfGwSeasonTotal(officialTotal, officialGwPoints, transferCost)
+    return startTotal + gwNetPoints
+}
+
+/** Positive = improved (green). Baseline is start-of-GW official overall, not current official. */
+fun rankMovement(liveRank: Long?, baselineRank: Long?): Long? {
+    if (liveRank == null || baselineRank == null) return null
+    if (liveRank <= 0L || baselineRank <= 0L) return null
+    return baselineRank - liveRank
+}
+
+fun startOfGwOverallRank(history: List<EntrySeasonSnapshot>, gameweek: Int): Int? {
+    if (gameweek <= 1) return null
+    return history.firstOrNull { it.event == gameweek - 1 }?.overallRank
+}
+
+fun previousEventTotal(history: List<EntrySeasonSnapshot>, gameweek: Int): Int? {
+    if (gameweek <= 1) return 0
+    return history.firstOrNull { it.event == gameweek - 1 }?.totalPoints
+}
 
 fun tenthsToMillions(value: Int?): Double? = value?.let { it / 10.0 }
 
@@ -400,14 +434,23 @@ fun evaluateLiveSquad(
             autoSubIn = pick.element in subbedIn,
             autoSubOut = pick.element in subbedOut,
             onBench = pick.element !in playing,
-            fixtureStatus = fixtureStatus(teamFixtures)
+            fixtureStatus = fixtureStatus(teamFixtures),
+            nowCost = tenthsToMillions(info?.nowCost),
+            costChangeEvent = tenthsToMillions(info?.costChangeEvent),
+            costChangeStart = tenthsToMillions(info?.costChangeStart)
         )
     }.sortedBy { it.position }
 
     val gwGross = teamLivePoints(rows)
     val transferCost = history.eventTransfersCost
     val net = gwNet(gwGross, transferCost)
-    val liveTotal = liveSeasonTotal(history.totalPoints, history.points, net)
+    val liveTotal = liveSeasonTotal(
+        officialTotal = history.totalPoints,
+        officialGwPoints = history.points,
+        gwNetPoints = net,
+        transferCost = transferCost,
+        previousTotal = history.previousTotalPoints
+    )
 
     val remaining = rows.count { !it.onBench && playerRemaining(players[it.element]?.let { info -> fixturesForTeam(info.teamId, fixtures) } ?: emptyList()) }
 

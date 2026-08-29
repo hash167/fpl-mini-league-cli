@@ -73,6 +73,44 @@ class LiveEngineTest {
     }
 
     @Test
+    fun `Erik-like liveTotal is 56 not 48 when official GW points are gross of an 8-pt hit`() {
+        // officialTotal already NET: 31 (GW1) + 33 gross - 8 hit = 56
+        // old formula officialTotal - officialGwPoints + gwNet = 56 - 33 + 25 = 48
+        assertEquals(56, liveSeasonTotal(
+            officialTotal = 56,
+            officialGwPoints = 33,
+            gwNetPoints = 25,
+            transferCost = 8,
+            previousTotal = 31
+        ))
+        assertEquals(56, liveSeasonTotal(
+            officialTotal = 56,
+            officialGwPoints = 33,
+            gwNetPoints = 25,
+            transferCost = 8
+        ))
+        assertEquals(31, startOfGwSeasonTotal(officialTotal = 56, officialGwPoints = 33, transferCost = 8))
+        assertEquals(48, 56 - 33 + 25)
+    }
+
+    @Test
+    fun `Hashim-like start-of-GW overall arrow is millions green not mid-GW noise`() {
+        val history = listOf(
+            EntrySeasonSnapshot(event = 1, points = 46, totalPoints = 46, overallRank = 5_572_584, eventTransfersCost = 0),
+            EntrySeasonSnapshot(event = 2, points = 31, totalPoints = 77, overallRank = 2_639_389, eventTransfersCost = 0)
+        )
+        val start = startOfGwOverallRank(history, gameweek = 2)
+        assertEquals(5_572_584, start)
+        val liveEst = 2_542_858L
+        val movement = rankMovement(liveEst, start?.toLong())
+        assertEquals(3_029_726L, movement)
+        assertTrue(movement!! > 2_000_000L)
+        val vsCurrentOfficial = rankMovement(liveEst, 2_639_389L)
+        assertEquals(96_531L, vsCurrentOfficial)
+        assertTrue(movement > vsCurrentOfficial!!)
+    }
+
+    @Test
     fun `auto-sub replaces blank starter with first eligible bench player`() {
         val picks = squad(
             starter(1, ELEMENT_GK, minutes = 0, finished = true),
@@ -243,7 +281,8 @@ class LiveEngineTest {
             bank = 15,
             value = 1015,
             eventTransfers = 1,
-            eventTransfersCost = 4
+            eventTransfersCost = 4,
+            previousTotalPoints = 1800
         )
         val result = evaluateLiveSquad(
             picks = picks,
@@ -259,6 +298,48 @@ class LiveEngineTest {
         assertEquals(21, result.gwGross)
         assertEquals(17, result.gwNet)
         assertEquals(1817, result.liveTotal)
+    }
+
+    @Test
+    fun `evaluateLiveSquad Erik-like 8-pt hit keeps liveTotal at 56`() {
+        val picks = listOf(
+            PickRow(10, 1, 2, isCaptain = true, isViceCaptain = false),
+            PickRow(11, 2, 1, isCaptain = false, isViceCaptain = true)
+        )
+        val players = mapOf(
+            10 to PlayerInfo(10, "Saka", "Saka", 1, "ARS", ELEMENT_MID),
+            11 to PlayerInfo(11, "Haaland", "Haaland", 2, "MCI", ELEMENT_FWD)
+        )
+        val live = mapOf(
+            10 to LiveElementStats(10, minutes = 90, totalPoints = 10, bonus = 0, bps = 20),
+            11 to LiveElementStats(11, minutes = 90, totalPoints = 13, bonus = 0, bps = 10)
+        )
+        val history = EntryEventHistory(
+            event = 2,
+            points = 33,
+            totalPoints = 56,
+            overallRank = 7_010_202,
+            bank = 0,
+            value = 1003,
+            eventTransfers = 3,
+            eventTransfersCost = 8,
+            previousTotalPoints = 31
+        )
+        val result = evaluateLiveSquad(
+            picks = picks,
+            history = history,
+            activeChip = null,
+            officialSubs = emptyList(),
+            players = players,
+            liveStats = live,
+            fixtures = emptyList(),
+            bonusSheet = ProjectedBonusSheet(emptyMap(), emptyMap(), emptyMap()),
+            applyAutosubs = true
+        )
+        assertEquals(33, result.gwGross)
+        assertEquals(25, result.gwNet)
+        assertEquals(56, result.liveTotal)
+        assertEquals(48, 56 - 33 + 25)
     }
 
     private fun starter(

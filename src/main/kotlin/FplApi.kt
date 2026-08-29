@@ -258,7 +258,13 @@ fun parsePlayerInfo(bootstrap: JsonObject): Map<Int, PlayerInfo> {
                 webName = webName.ifBlank { fullName },
                 teamId = teamId,
                 teamShortName = teams[teamId].orEmpty(),
-                elementType = player.int("element_type") ?: 0
+                elementType = player.int("element_type") ?: 0,
+                nowCost = player.int("now_cost"),
+                costChangeEvent = player.int("cost_change_event"),
+                costChangeStart = player.int("cost_change_start"),
+                transfersInEvent = player.int("transfers_in_event") ?: 0,
+                transfersOutEvent = player.int("transfers_out_event") ?: 0,
+                selectedBy = player.str("selected_by_percent")
             )
         }
         .toMap()
@@ -273,6 +279,20 @@ fun parseTeamShortNames(bootstrap: JsonObject): Map<Int, String> {
             id to short
         }
         .toMap()
+}
+
+fun parseEntryHistoryCurrent(response: JsonObject): List<EntrySeasonSnapshot> {
+    return response.arr("current").mapNotNull { item ->
+        val obj = item as? JsonObject ?: return@mapNotNull null
+        val event = obj.int("event") ?: return@mapNotNull null
+        EntrySeasonSnapshot(
+            event = event,
+            points = obj.int("points") ?: 0,
+            totalPoints = obj.int("total_points") ?: 0,
+            overallRank = obj.int("overall_rank"),
+            eventTransfersCost = obj.int("event_transfers_cost") ?: 0
+        )
+    }
 }
 
 fun parseEntryProfile(response: JsonObject): Pair<String, String> {

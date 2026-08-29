@@ -17,13 +17,43 @@ spec:
     spec:
       nodeSelector:
         kubernetes.io/hostname: randomnumber01
+      securityContext:
+        runAsUser: 65534
+        runAsGroup: 65534
+        fsGroup: 65534
       containers:
         - name: fpl-web
-          image: docker.io/library/fpl-web:1.1
+          image: docker.io/library/fpl-web:1.15
           imagePullPolicy: IfNotPresent
           ports:
             - name: http
               containerPort: 8080
+          env:
+            - name: HONEYCOMB_API_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: fpl-honeycomb
+                  key: HONEYCOMB_API_KEY
+                  optional: true
+            - name: OTEL_SERVICE_NAME
+              value: fpl-web
+            - name: OTEL_EXPORTER_OTLP_PROTOCOL
+              value: http/protobuf
+            - name: OTEL_EXPORTER_OTLP_ENDPOINT
+              value: https://api.honeycomb.io
+            - name: OTEL_METRICS_EXPORTER
+              value: otlp
+            - name: OTEL_LOGS_EXPORTER
+              value: otlp
+            - name: OTEL_TRACES_SAMPLER
+              value: parentbased_always_on
+            - name: OTEL_BSP_SCHEDULE_DELAY
+              value: "2000"
+            - name: OTEL_RESOURCE_ATTRIBUTES
+              value: service.namespace=fpl,service.version=1.15
+          volumeMounts:
+            - name: overall-data
+              mountPath: /app/data
           resources:
             requests:
               cpu: 100m
@@ -45,3 +75,8 @@ spec:
             initialDelaySeconds: 40
             timeoutSeconds: 5
             periodSeconds: 20
+      volumes:
+        - name: overall-data
+          hostPath:
+            path: /var/lib/fpl-web
+            type: DirectoryOrCreate

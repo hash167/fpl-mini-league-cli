@@ -24,6 +24,7 @@ class CachingFplClient(
     private val bootstrapCache = TtlCache<JsonObject>(ttlMs)
     private val liveCache = ConcurrentHashMap<Int, TtlCache<JsonObject>>()
     private val fixturesCache = ConcurrentHashMap<Int, TtlCache<List<JsonObject>>>()
+    private val historyCache = ConcurrentHashMap<Int, TtlCache<JsonObject>>()
 
     override fun bootstrap(): JsonObject = bootstrapCache.get { inner.bootstrap() }
 
@@ -39,7 +40,8 @@ class CachingFplClient(
 
     override fun entry(entryId: Int): JsonObject = inner.entry(entryId)
 
-    override fun entryHistory(entryId: Int): JsonObject = inner.entryHistory(entryId)
+    override fun entryHistory(entryId: Int): JsonObject =
+        historyCache.getOrPut(entryId) { TtlCache(ttlMs) }.get { inner.entryHistory(entryId) }
 
     override fun entryEvent(entryId: Int, eventId: Int): JsonObject = inner.entryEvent(entryId, eventId)
 

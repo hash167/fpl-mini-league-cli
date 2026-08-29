@@ -47,7 +47,13 @@ data class PlayerInfo(
     val webName: String,
     val teamId: Int,
     val teamShortName: String,
-    val elementType: Int
+    val elementType: Int,
+    val nowCost: Int? = null,
+    val costChangeEvent: Int? = null,
+    val costChangeStart: Int? = null,
+    val transfersInEvent: Int? = null,
+    val transfersOutEvent: Int? = null,
+    val selectedBy: String? = null
 )
 
 data class TeamLiveSummary(
@@ -76,7 +82,11 @@ data class PlayerLiveRow(
     val autoSubIn: Boolean = false,
     val autoSubOut: Boolean = false,
     val onBench: Boolean = false,
-    val fixtureStatus: String = ""
+    val fixtureStatus: String = "",
+    val eo: Double? = null,
+    val nowCost: Double? = null,
+    val costChangeEvent: Double? = null,
+    val costChangeStart: Double? = null
 )
 
 data class MiniLeaguesResponse(
@@ -113,12 +123,16 @@ data class TeamLiveStanding(
     val livePoints: Int,
     val liveRank: Int = 0,
     val officialRank: Int = 0,
+    val lastRank: Int? = null,
     val liveTotal: Int = 0,
     val gwNet: Int = 0,
     val gwGross: Int = 0,
     val transferCost: Int = 0,
     val playersRemaining: Int = 0,
     val overallRank: Int? = null,
+    val overallRankLabel: String = "official",
+    val startOfGwOverallRank: Int? = null,
+    val liveOverallRankEstimate: Long? = null,
     val freeTransfers: Int? = null,
     val teamValue: Double? = null,
     val bank: Double? = null,
@@ -126,7 +140,8 @@ data class TeamLiveStanding(
     val projectedBonus: Int = 0,
     val confirmedBonus: Int = 0,
     val autosubsApplied: Int = 0,
-    val captainStatus: String = ""
+    val captainStatus: String = "",
+    val players: List<PlayerLiveRow> = emptyList()
 )
 
 data class EntryPicksResponse(
@@ -144,6 +159,7 @@ data class EntryPicksResponse(
     val officialGwPoints: Int = 0,
     val overallRank: Int? = null,
     val overallRankLabel: String = "official",
+    val startOfGwOverallRank: Int? = null,
     val teamValue: Double? = null,
     val bank: Double? = null,
     val freeTransfers: Int? = null,
@@ -170,6 +186,7 @@ data class EntryLiveResponse(
     val officialGwPoints: Int,
     val overallRank: Int?,
     val overallRankLabel: String,
+    val startOfGwOverallRank: Int? = null,
     val teamValue: Double?,
     val bank: Double?,
     val freeTransfers: Int?,
@@ -182,7 +199,11 @@ data class EntryLiveResponse(
     val captainStatus: String,
     val live: Boolean,
     val fixtures: List<FixtureView>,
-    val players: List<PlayerLiveRow>
+    val players: List<PlayerLiveRow>,
+    val liveOverallRankEstimate: Long? = null,
+    val liveOverallEstimateAvailable: Boolean = false,
+    val liveOverallSampleAgeSeconds: Long? = null,
+    val liveOverallSampleCount: Int? = null
 )
 
 data class FixtureView(
@@ -244,6 +265,15 @@ data class EntryEventHistory(
     val bank: Int?,
     val value: Int?,
     val eventTransfers: Int,
+    val eventTransfersCost: Int,
+    val previousTotalPoints: Int? = null
+)
+
+data class EntrySeasonSnapshot(
+    val event: Int,
+    val points: Int,
+    val totalPoints: Int,
+    val overallRank: Int?,
     val eventTransfersCost: Int
 )
 
@@ -268,4 +298,74 @@ data class AutoSubPick(
     val fixtureStarted: Boolean,
     val isCaptain: Boolean,
     val isViceCaptain: Boolean
+)
+
+data class LiveOverallEstimateStatus(
+    val warm: Boolean,
+    val available: Boolean,
+    val sampleAgeSeconds: Long?,
+    val sampleCount: Int,
+    val targetSampleCount: Int,
+    val totalPlayers: Int?,
+    val gameweek: Int?,
+    val refreshing: Boolean,
+    val bands: List<LiveOverallBandStatus>,
+    val note: String
+)
+
+data class LiveOverallBandStatus(
+    val index: Int,
+    val startRank: Int,
+    val endRank: Int,
+    val nB: Int,
+    val nSlice: Int
+)
+
+
+data class LiveBoardResponse(
+    val gameweek: Int,
+    val live: Boolean,
+    val fixtures: List<FixtureView> = emptyList(),
+    val estimateNote: String,
+    val players: List<LiveBoardPlayer>
+)
+
+data class LiveBoardPlayer(
+    val id: Int,
+    val webName: String,
+    val team: String,
+    val position: String,
+    val minutes: Int,
+    val livePoints: Int,
+    val nowCost: Int,
+    val costChangeEvent: Int,
+    val transfersInEvent: Int,
+    val transfersOutEvent: Int,
+    val netTransfers: Int,
+    val selectedBy: String?,
+    val priceEstimate: String,
+    val priceEstimateReason: String
+)
+
+
+data class PriceRiseEstimate(
+    val id: Int,
+    val webName: String,
+    val team: String,
+    val position: String,
+    val nowCost: Int,
+    val nowPounds: String,
+    val netTransfers: Int,
+    val transfersInEvent: Int,
+    val transfersOutEvent: Int,
+    val selectedBy: String?,
+    val priceEstimate: String,
+    val priceEstimateReason: String
+)
+
+data class PriceRiseEstimatesResponse(
+    val computedAt: String,
+    val gameweek: Int,
+    val estimateNote: String,
+    val rises: List<PriceRiseEstimate>
 )

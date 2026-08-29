@@ -58,11 +58,14 @@
     .fixtures { display: flex; gap: 0.45rem; overflow-x: auto; padding-bottom: 0.2rem; }
     .fx {
       flex: 0 0 auto; background: var(--bg-3); border: 1px solid var(--line);
-      border-radius: 8px; padding: 0.35rem 0.55rem; min-width: 7.8rem; font-size: 0.8rem;
+      border-radius: 8px; padding: 0.35rem 0.55rem; min-width: 9.4rem; font-size: 0.8rem;
     }
     .fx .score { font-weight: 650; }
     .fx.live { border-color: #2f6b50; }
     .fx.done { opacity: 0.7; }
+    .fx-players { margin-top: 0.28rem; font-size: 0.72rem; line-height: 1.35; }
+    .fx-players .role { color: var(--accent-2); font-weight: 650; }
+    .fx-players .pts { color: var(--accent); font-weight: 650; }
     .toolbar { display: flex; gap: 0.6rem; flex-wrap: wrap; align-items: center; justify-content: space-between; }
     table.live { width: 100%; border-collapse: collapse; font-variant-numeric: tabular-nums; }
     table.live th, table.live td { padding: 0.38rem 0.4rem; border-bottom: 1px solid var(--line); text-align: right; white-space: nowrap; }
@@ -85,6 +88,75 @@
     .in { color: var(--accent); }
     .out { color: var(--danger); }
     .bench { opacity: 0.72; }
+    .scorers { font-size: 0.75rem; color: var(--muted); white-space: normal; line-height: 1.35; margin-top: 0.2rem; }
+    .scorers b { color: var(--accent); font-weight: 650; }
+    .scorers .zero { opacity: 0.7; }
+    .standings-table-wrap { width: 100%; }
+    .mobile-standings { display: none; }
+    .mgr-card {
+      background: var(--bg-3); border: 1px solid var(--line); border-radius: 10px;
+      padding: 0.7rem 0.75rem; cursor: pointer;
+    }
+    .mgr-card.selected { background: #243b2f; border-color: #2f6b50; }
+    .mgr-card-head { display: flex; justify-content: space-between; align-items: flex-start; gap: 0.65rem; }
+    .mgr-card-ranks { display: flex; gap: 0.55rem; flex-wrap: wrap; }
+    .mgr-rank { min-width: 3.2rem; }
+    .mgr-rank span { display: block; font-size: 0.68rem; color: var(--muted); text-transform: uppercase; letter-spacing: 0.04em; }
+    .mgr-rank b { font-size: 1.05rem; }
+    .mgr-live-total { text-align: right; flex: 0 0 auto; }
+    .mgr-live-total span { display: block; font-size: 0.68rem; color: var(--muted); text-transform: uppercase; letter-spacing: 0.04em; }
+    .mgr-live-total b { display: block; font-size: 1.45rem; line-height: 1.1; color: var(--accent); }
+    .mgr-identity { margin-top: 0.45rem; }
+    .mgr-identity .team { font-size: 0.8rem; }
+    .mgr-overall { margin-top: 0.25rem; font-size: 0.78rem; color: var(--muted); }
+    .scorer-pills { display: flex; flex-wrap: wrap; gap: 0.3rem; margin-top: 0.5rem; }
+    .scorer-pill {
+      font-size: 0.72rem; padding: 0.18rem 0.45rem; border-radius: 999px;
+      background: #243246; border: 1px solid var(--line); color: var(--text);
+    }
+    .scorer-pill b { color: var(--accent); }
+    .scorer-pill.zero { color: var(--muted); }
+    .price { color: var(--chip); font-variant-numeric: tabular-nums; }
+    .price.up { color: var(--accent); }
+    .price.down { color: var(--danger); }
+
+    .board-head { display: flex; flex-wrap: wrap; gap: 0.5rem 0.8rem; align-items: center; justify-content: space-between; }
+    .chips { display: flex; gap: 0.35rem; flex-wrap: wrap; }
+    .chips button.active { border-color: var(--accent); color: var(--accent); }
+    #homeBoard.collapsed #boardMount, #homeBoard.collapsed #boardChips { display: none; }
+    #homeBoard.collapsed { padding: 0.55rem 0.75rem; }
+    #boardToggle { font-size: 0.85rem; }
+    #boardMount { max-height: min(52vh, 420px); overflow: auto; margin-top: 0.5rem; }
+    .est { font-size: 0.75rem; font-weight: 650; }
+    .est.rise { color: var(--accent); }
+    .est.fall { color: var(--danger); }
+    .est.stable { color: var(--muted); }
+    .arrow { font-weight: 700; margin-left: 0.25rem; }
+    .arrow.up { color: var(--accent); }
+    .arrow.down { color: var(--danger); }
+    .arrow.flat { color: var(--muted); }
+    .pboard-cards { display: none; }
+    .p-card {
+      background: var(--bg-3); border: 1px solid var(--line); border-radius: 10px;
+      padding: 0.65rem 0.7rem;
+    }
+    .p-card-top { display: flex; justify-content: space-between; gap: 0.5rem; }
+    .p-card-pts { font-size: 1.35rem; color: var(--accent); font-weight: 650; }
+    table.pboard th, table.pboard td { text-align: left; }
+    table.pboard td.num, table.pboard th.num { text-align: right; }
+    @media (max-width: 720px) {
+      table.pboard { display: none; }
+      .pboard-cards { display: flex; flex-direction: column; gap: 0.55rem; }
+    }
+    @media (max-width: 720px) {
+      header { padding: 0.6rem 0.7rem; }
+      main { padding: 0.7rem 0.7rem 2.5rem; }
+      form.bar { gap: 0.4rem; }
+      form.bar label, form.bar input { width: 100%; }
+      table.live-standings { display: none; }
+      .mobile-standings { display: flex; flex-direction: column; gap: 0.6rem; }
+      table.live thead th { top: 48px; }
+    }
   </style>
 </head>
 <body>
@@ -104,18 +176,44 @@
       <button type="button" id="openLeague">Open league</button>
     </form>
     <div id="app"></div>
+    <section class="card collapsed" id="homeBoard">
+      <div class="board-head">
+        <div>
+          <strong>Live points + price watch</strong>
+          <div class="muted" id="boardNote">Loading player board…</div>
+        </div>
+        <button type="button" id="boardToggle">Show board</button>
+      </div>
+      <div class="chips" id="boardChips">
+        <button type="button" data-filter="all" class="active">All</button>
+        <button type="button" data-filter="price">Price rise</button>
+      </div>
+      <div id="boardMount"></div>
+    </section>
   </main>
   <script>
     const app = document.getElementById("app");
     const state = {
       entryId: null, gameweek: null, live: false, autosubs: true, detailed: true,
       entry: null, leagues: [], league: null, picks: null, sort: { key: "liveRank", dir: 1 },
-      timer: null
+      timer: null,
+      board: null, prices: null, boardFilter: "all", boardSort: { key: "livePoints", dir: -1 }, boardOpen: false
     };
 
     function el(html) {
+      const raw = String(html == null ? "" : html).trim();
+      const isTr = /^<tr[\s>]/i.test(raw);
+      const isCell = /^<t[dh][\s>]/i.test(raw);
       const d = document.createElement("div");
-      d.innerHTML = html.trim();
+      if (isTr) {
+        d.innerHTML = "<table><tbody>" + raw + "</tbody></table>";
+        return d.querySelector("tr");
+      }
+      if (isCell) {
+        d.innerHTML = "<table><tbody><tr>" + raw + "</tr></tbody></table>";
+        return d.querySelector("td,th");
+      }
+      d.innerHTML = raw;
       return d.firstElementChild;
     }
     function escapeHtml(s) {
@@ -123,8 +221,59 @@
         .replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
     }
     function fmt(n) { return n == null || n === "" ? "—" : n; }
+    function rankArrow(live, official) {
+      const L = Number(live), O = Number(official);
+      if (!L || !O) return "";
+      const d = O - L;
+      if (d === 0) return "<span class='arrow flat'>→ 0</span>";
+      const places = Math.abs(d).toLocaleString();
+      if (d > 0) return "<span class='arrow up'>▲ " + places + "</span>";
+      return "<span class='arrow down'>▼ " + places + "</span>";
+    }
+    function liveOverallHtml(e) {
+      if (!e.liveOverallEstimateAvailable || e.liveOverallRankEstimate == null) return "estimate unavailable";
+      return fmtRank(e.liveOverallRankEstimate) + " (estimate) " + rankArrow(e.liveOverallRankEstimate, e.startOfGwOverallRank);
+    }
+    function placeDeltaHtml(team) {
+      return rankArrow(team.liveRank, team.lastRank);
+    }
+
     function fmtMoney(n) { return n == null ? "—" : "£" + Number(n).toFixed(1) + "m"; }
     function fmtRank(n) { return n == null ? "—" : Number(n).toLocaleString(); }
+    function fmtAge(seconds) {
+      if (seconds == null) return "—";
+      const s = Number(seconds);
+      if (s < 60) return s + "s ago";
+      if (s < 3600) return Math.floor(s / 60) + "m ago";
+      return (s / 3600).toFixed(1).replace(/\.0$/, "") + "h ago";
+    }
+    function fmtEo(eo) {
+      if (eo == null || eo === "") return "—";
+      return (Number(eo) * 100).toFixed(0) + "%";
+    }
+    function fmtNowCost(n) {
+      if (n == null || n === "") return "";
+      return "£" + Number(n).toFixed(1);
+    }
+    function fmtGwPriceChange(n) {
+      if (n == null || n === "" || Number(n) === 0) return "";
+      const v = Number(n);
+      const sign = v > 0 ? "+" : "−";
+      return sign + "£" + Math.abs(v).toFixed(1);
+    }
+    function priceHtml(pl) {
+      const cost = fmtNowCost(pl.nowCost);
+      if (!cost) return "";
+      const ch = fmtGwPriceChange(pl.costChangeEvent);
+      const cls = Number(pl.costChangeEvent) > 0 ? " up" : (Number(pl.costChangeEvent) < 0 ? " down" : "");
+      return "<span class='price" + cls + "'>" + cost + (ch ? (" " + ch) : "") + "</span>";
+    }
+    function pricePlain(pl) {
+      const cost = fmtNowCost(pl.nowCost);
+      if (!cost) return "";
+      const ch = fmtGwPriceChange(pl.costChangeEvent);
+      return cost + (ch ? (" " + ch) : "");
+    }
 
     async function api(path) {
       const res = await fetch(path);
@@ -142,12 +291,31 @@
       pill.className = "pill" + (live ? " live" : "");
     }
 
+    function persistView() {
+      const params = new URLSearchParams();
+      if (state.entryId) params.set("entry", String(state.entryId));
+      if (state.league && state.league.leagueId) params.set("league", String(state.league.leagueId));
+      const qs = params.toString();
+      const next = qs ? (location.pathname + "?" + qs) : location.pathname;
+      history.replaceState(null, "", next);
+      try {
+        if (state.entryId) localStorage.setItem("fpl.entryId", String(state.entryId));
+        if (state.league && state.league.leagueId) localStorage.setItem("fpl.leagueId", String(state.league.leagueId));
+        else localStorage.removeItem("fpl.leagueId");
+      } catch (e) {}
+      const entryInput = document.querySelector('input[name="entryId"]');
+      const leagueInput = document.querySelector('input[name="leagueId"]');
+      if (entryInput && state.entryId) entryInput.value = state.entryId;
+      if (leagueInput) leagueInput.value = (state.league && state.league.leagueId) || "";
+    }
+
     function scheduleRefresh() {
       clearInterval(state.timer);
-      const live = !!(state.entry && state.entry.live) || !!(state.league && state.league.live);
+      const live = !!(state.board && state.board.live) || !!(state.entry && state.entry.live) || !!(state.league && state.league.live);
       document.getElementById("refreshHint").textContent = live ? "auto-refresh 90s" : "fixtures not started";
       if (!live) return;
       state.timer = setInterval(() => {
+        loadBoard(true);
         if (state.league) loadLeague(state.league.leagueId, true);
         else if (state.entryId) loadEntry(state.entryId, true);
       }, 90000);
@@ -183,6 +351,7 @@
         state.gameweek = entry.gameweek;
         state.picks = { players: entry.players, managerName: entry.managerName, teamName: entry.teamName, livePoints: entry.gwGross, gameweek: entry.gameweek };
         setPills(entry.gameweek, entry.live);
+        persistView();
         render();
         scheduleRefresh();
       } catch (err) {
@@ -197,6 +366,7 @@
         state.league = data;
         state.gameweek = data.gameweek;
         setPills(data.gameweek, data.live);
+        persistView();
         render();
         scheduleRefresh();
       } catch (err) {
@@ -247,13 +417,17 @@
         ["Captain", e.captainStatus || "—"],
         ["Chip", e.activeChip || "—"],
         ["Overall rank", fmtRank(e.overallRank) + " (official)"],
+        ["Live overall", liveOverallHtml(e)],
+        ["Sample age", fmtAge(e.liveOverallSampleAgeSeconds)],
         ["Value", fmtMoney(e.teamValue)],
         ["Bank", fmtMoney(e.bank)],
         ["Free transfers", fmt(e.freeTransfers)],
         ["Autosubs", e.autosubsApplied]
       ];
       items.forEach(([k, v]) => {
-        stats.appendChild(el("<div class='stat'><span>" + k + "</span><b>" + escapeHtml(v) + "</b></div>"));
+        const raw = String(v == null ? "—" : v);
+        const safe = raw.indexOf("<span") >= 0 ? raw : escapeHtml(raw);
+        stats.appendChild(el("<div class='stat'><span>" + k + "</span><b>" + safe + "</b></div>"));
       });
       card.appendChild(stats);
       return card;
@@ -271,6 +445,21 @@
       return box;
     }
 
+    function squadPlayers() {
+      return (state.entry && state.entry.players)
+        || (state.picks && state.picks.players)
+        || [];
+    }
+
+    function playersInFixture(fx) {
+      const home = String(fx.home || "").toUpperCase();
+      const away = String(fx.away || "").toUpperCase();
+      return squadPlayers().filter((pl) => {
+        const team = String(pl.team || "").toUpperCase();
+        return team && (team === home || team === away);
+      });
+    }
+
     function renderFixtures(fixtures) {
       const box = el("<section class='card'><div class='muted'>Gameweek fixtures</div><div class='fixtures'></div></section>");
       const row = box.querySelector(".fixtures");
@@ -283,9 +472,41 @@
           "</span> " + escapeHtml(fx.away) + "</div><div class='muted'>" + escapeHtml(clock) + "</div></div>");
         if (fx.started && !fx.finished) node.classList.add("live");
         if (fx.finished) node.classList.add("done");
+        const mine = playersInFixture(fx);
+        if (mine.length) {
+          const list = el("<div class='fx-players'></div>");
+          mine.forEach((pl) => {
+            const role = pl.captain ? "C" : (pl.viceCaptain ? "VC" : "");
+            const bits = [escapeHtml(pl.webName || pl.name || "")];
+            if (role) bits.push("<span class='role'>" + role + "</span>");
+            if (pl.onBench) bits.push("<span class='muted'>bench</span>");
+            bits.push("<span class='muted'>" + fmt(pl.minutes) + "'</span>");
+            bits.push("<span class='pts'>" + fmt(pl.contribution) + " pts</span>");
+            const pr = priceHtml(pl);
+            if (pr) bits.push(pr);
+            list.appendChild(el("<div" + (pl.onBench ? " class='bench'" : "") + ">" + bits.join(" · ") + "</div>"));
+          });
+          node.appendChild(list);
+        }
         row.appendChild(node);
       });
       return box;
+    }
+
+
+    function scorerLine(team) {
+      const players = (team.players || []).filter((pl) => !pl.onBench && (pl.contribution > 0 || pl.minutes > 0));
+      const scored = players.filter((pl) => pl.contribution > 0)
+        .sort((a, b) => (b.contribution - a.contribution));
+      if (!scored.length) {
+        return "<div class='scorers zero'>No points yet</div>";
+      }
+      const bits = scored.map((pl) => {
+        const tag = pl.captain ? " C" : (pl.viceCaptain ? " VC" : "");
+        const pr = pricePlain(pl);
+        return escapeHtml(pl.webName || pl.name) + tag + (pr ? (" " + pr) : "") + " <b>" + pl.contribution + "</b>";
+      });
+      return "<div class='scorers'>" + bits.join(" · ") + "</div>";
     }
 
     function renderTable() {
@@ -314,13 +535,14 @@
         ["gwNet", "GW net"],
         ["gwGross", "GW gross", true],
         ["playersRemaining", "Remaining"],
+        ["liveOverallRankEstimate", "Live overall"],
         ["overallRank", "Overall rank", true],
         ["freeTransfers", "FT", true],
         ["teamValue", "Value", true],
         ["activeChip", "Chip", true]
       ].filter((c) => state.detailed || !c[2]);
 
-      const table = el("<table class='live'><thead><tr></tr></thead><tbody></tbody></table>");
+      const table = el("<table class='live live-standings'><thead><tr></tr></thead><tbody></tbody></table>");
       const trh = table.querySelector("thead tr");
       cols.forEach((c) => {
         const th = document.createElement("th");
@@ -341,7 +563,7 @@
         if (av == null) return 1;
         if (bv == null) return -1;
         if (typeof av === "string") return av.localeCompare(bv) * state.sort.dir;
-        return (av - bv) * (k === "liveRank" || k === "officialRank" || k === "overallRank" ? (state.sort.dir === 1 ? 1 : -1) : state.sort.dir);
+        return (av - bv) * (k === "liveRank" || k === "officialRank" || k === "overallRank" || k === "liveOverallRankEstimate" ? (state.sort.dir === 1 ? 1 : -1) : state.sort.dir);
       });
       rows.forEach((team) => {
         const tr = document.createElement("tr");
@@ -351,8 +573,13 @@
           let v = team[c[0]];
           if (c[0] === "managerName") {
             td.className = "name";
-            td.innerHTML = "<div>" + escapeHtml(team.managerName) + "</div><div class='muted'>" + escapeHtml(team.entryName) + "</div>";
+            td.innerHTML = "<div>" + escapeHtml(team.managerName) + "</div><div class='muted'>" + escapeHtml(team.entryName) + "</div>" + scorerLine(team);
+          } else if (c[0] === "liveRank") {
+            td.innerHTML = fmt(v) + " " + placeDeltaHtml(team);
           } else if (c[0] === "teamValue") td.textContent = fmtMoney(v);
+          else if (c[0] === "liveOverallRankEstimate") {
+            td.innerHTML = v == null ? "—" : (fmtRank(v) + " est " + rankArrow(v, team.startOfGwOverallRank));
+          }
           else if (c[0] === "overallRank") td.textContent = fmtRank(v);
           else if (c[0] === "activeChip") { td.textContent = v || ""; td.className = "chip"; }
           else if (c[0] === "freeTransfers") td.textContent = fmt(v);
@@ -363,7 +590,51 @@
         tbody.appendChild(tr);
       });
       wrap.appendChild(table);
+      wrap.appendChild(renderMobileStandings(rows));
       return wrap;
+    }
+
+    function scorerPills(team) {
+      const players = (team.players || []).filter((pl) => !pl.onBench && (pl.contribution > 0 || pl.minutes > 0));
+      const scored = players.filter((pl) => pl.contribution > 0)
+        .sort((a, b) => (b.contribution - a.contribution));
+      if (!scored.length) {
+        return "<div class='scorer-pills'><span class='scorer-pill zero'>No points yet</span></div>";
+      }
+      const pills = scored.map((pl) => {
+        const tag = pl.captain ? " C" : (pl.viceCaptain ? " VC" : "");
+        const pr = priceHtml(pl);
+        return "<span class='scorer-pill'>" + escapeHtml(pl.webName || pl.name) + tag + (pr ? (" " + pr) : "") + " <b>" + pl.contribution + "</b></span>";
+      });
+      return "<div class='scorer-pills'>" + pills.join("") + "</div>";
+    }
+
+    function renderMobileStandings(rows) {
+      const list = el("<div class='mobile-standings'></div>");
+      rows.forEach((team) => {
+        const overall = team.liveOverallRankEstimate == null
+          ? "<div class='mgr-overall'>Live overall —</div>"
+          : "<div class='mgr-overall'>Live overall " + fmtRank(team.liveOverallRankEstimate) + " est " + rankArrow(team.liveOverallRankEstimate, team.startOfGwOverallRank) + "</div>";
+        const card = el(
+          "<article class='mgr-card'>" +
+            "<div class='mgr-card-head'>" +
+              "<div class='mgr-card-ranks'>" +
+                "<div class='mgr-rank'><span>Live rank</span><b>" + fmt(team.liveRank) + "</b> " + placeDeltaHtml(team) + "</div>" +
+                "<div class='mgr-rank'><span>Official</span><b>" + fmt(team.officialRank) + "</b></div>" +
+              "</div>" +
+              "<div class='mgr-live-total'><span>Live total</span><b>" + fmt(team.liveTotal) + "</b></div>" +
+            "</div>" +
+            "<div class='mgr-identity'><strong>" + escapeHtml(team.managerName) + "</strong>" +
+              "<div class='team muted'>" + escapeHtml(team.entryName) + "</div></div>" +
+            overall +
+            scorerPills(team) +
+          "</article>"
+        );
+        if (state.picks && state.picks.entryId === team.entryId) card.classList.add("selected");
+        card.onclick = () => loadPicks(team);
+        list.appendChild(card);
+      });
+      return list;
     }
 
     function renderPicks() {
@@ -379,7 +650,7 @@
         " · hit " + fmt(p.transferCost) + " · live total " + fmt(p.liveTotal) +
         (p.activeChip ? (" · " + p.activeChip) : "") + "</p>"));
       const table = el("<table class='live players'><thead><tr>" +
-        "<th></th><th>Player</th><th class='num'>Min</th><th class='num'>Raw</th><th class='num'>Bonus</th><th class='num'>×</th><th class='num'>Pts</th>" +
+        "<th></th><th>Player</th><th class='num'>Price</th><th class='num'>Min</th><th class='num'>Raw</th><th class='num'>Bonus</th><th class='num'>×</th><th class='num'>EO</th><th class='num'>Pts</th>" +
         "</tr></thead><tbody></tbody></table>");
       const tbody = table.querySelector("tbody");
       (p.players || []).forEach((pl) => {
@@ -388,14 +659,205 @@
         const bonus = (pl.confirmedBonus ? pl.confirmedBonus : (pl.projectedBonus ? ("+" + pl.projectedBonus + "p") : "0"));
         const tr = el("<tr class='" + (pl.onBench ? "bench" : "") + "'><td class='tag'>" + pl.elementTypeName +
           "</td><td>" + escapeHtml(pl.webName || pl.name) + (pl.team ? " <span class='muted'>" + escapeHtml(pl.team) + "</span>" : "") +
-          tag + sub + "</td><td class='num'>" + pl.minutes + "</td><td class='num'>" + pl.rawPoints +
+          tag + sub + "</td><td class='num'>" + (priceHtml(pl) || "—") + "</td><td class='num'>" + pl.minutes + "</td><td class='num'>" + pl.rawPoints +
           "</td><td class='num'>" + bonus + "</td><td class='num'>" + pl.multiplier +
-          "</td><td class='num'>" + pl.contribution + "</td></tr>");
+          "</td><td class='num'>" + fmtEo(pl.eo) + "</td><td class='num'>" + pl.contribution + "</td></tr>");
         tbody.appendChild(tr);
       });
       box.appendChild(table);
       return box;
     }
+
+    function fmtNet(n) {
+      if (n == null) return "—";
+      const v = Number(n);
+      if (v > 0) return "+" + v.toLocaleString();
+      return v.toLocaleString();
+    }
+    function officialPrice(p) {
+      if (p.nowCost == null) return "—";
+      const pounds = (Number(p.nowCost) / 10).toFixed(1);
+      const ch = Number(p.costChangeEvent || 0);
+      let extra = "";
+      if (ch) extra = " " + (ch > 0 ? "+" : "−") + "£" + (Math.abs(ch) / 10).toFixed(1);
+      return "£" + pounds + extra;
+    }
+    function estHtml(p) {
+      const lab = p.priceEstimate || "stable";
+      const cls = lab === "likely_rise" ? "rise" : (lab === "likely_fall" ? "fall" : "stable");
+      const text = lab === "likely_rise" ? "likely rise" : (lab === "likely_fall" ? "likely fall" : "stable");
+      return "<span class='est " + cls + "' title='" + escapeHtml(p.priceEstimateReason || "") + "'>" + text + "</span>";
+    }
+    function applyBoardOpen() {
+      const box = document.getElementById("homeBoard");
+      const btn = document.getElementById("boardToggle");
+      box.classList.toggle("collapsed", !state.boardOpen);
+      btn.textContent = state.boardOpen ? "Hide board" : "Show board";
+    }
+    function estimateRiseRows() {
+      return ((state.prices && state.prices.rises) || []).slice();
+    }
+    function boardRows() {
+      const all = (state.board && state.board.players) || [];
+      let rows = all.slice();
+      if (state.boardFilter === "price") {
+        const est = estimateRiseRows().slice();
+        est.sort((a, b) => (Number(b.netTransfers) || 0) - (Number(a.netTransfers) || 0));
+        return est;
+      }
+      const { key, dir } = state.boardSort;
+      rows.sort((a, b) => {
+        const av = a[key], bv = b[key];
+        if (typeof av === "string" || typeof bv === "string") {
+          return dir * String(av || "").localeCompare(String(bv || ""));
+        }
+        return dir * ((Number(av) || 0) - (Number(bv) || 0));
+      });
+      return rows;
+    }
+    function renderBoard() {
+      const mount = document.getElementById("boardMount");
+      const note = document.getElementById("boardNote");
+      if (!state.board) {
+        mount.innerHTML = "";
+        return;
+      }
+      const all = state.board.players || [];
+      const movers = estimateRiseRows();
+      document.querySelector('#boardChips [data-filter="price"]').textContent = "Price rise (" + movers.length + ")";
+      document.querySelector('#boardChips [data-filter="all"]').textContent = "All (" + all.length + ")";
+      if (state.boardFilter === "price") {
+        const px = state.prices || {};
+        const empty = !movers.length;
+        if (empty) {
+          note.textContent = "No likely rises from current official transfers (estimate before tonight's official change).";
+        } else {
+          note.textContent = "Estimate before tonight's official change · GW " + (px.gameweek || "—") +
+            " · computed " + (px.computedAt || "—") + " · " + movers.length + " likely rises. " +
+            (px.estimateNote || "");
+        }
+      } else {
+        note.textContent = (state.board.estimateNote || "") + (state.board.live ? " · GW live" : " · GW not live") + " · " + boardRows().length + " shown";
+      }
+      const rows = boardRows();
+      if (state.boardFilter === "price") {
+        const table = el("<table class='live pboard'><thead><tr>" +
+          "<th>Player</th><th>Team</th><th class='num'>£price</th><th class='num'>Net xfers</th><th>Estimate</th></tr></thead><tbody></tbody></table>");
+        const tb = table.querySelector("tbody");
+        rows.forEach((p) => {
+          const pounds = p.nowPounds || officialPrice(p);
+          tb.appendChild(el("<tr><td>" + escapeHtml(p.webName) + "</td><td>" + escapeHtml(p.team) +
+            "</td><td class='num price'>" + escapeHtml(pounds) +
+            "</td><td class='num'>" + fmtNet(p.netTransfers) + "</td><td>" + estHtml(p) + "</td></tr>"));
+        });
+        const cards = el("<div class='pboard-cards'></div>");
+        rows.forEach((p) => {
+          const pounds = p.nowPounds || officialPrice(p);
+          cards.appendChild(el(
+            "<article class='p-card'><div class='p-card-top'><div><strong>" + escapeHtml(p.webName) +
+            "</strong> <span class='muted'>" + escapeHtml(p.team) +
+            "</span></div><div class='p-card-pts'>" + escapeHtml(pounds) +
+            "</div></div><div class='muted'>net " + fmtNet(p.netTransfers) + "</div><div>" + estHtml(p) + "</div></article>"
+          ));
+        });
+        mount.innerHTML = "";
+        mount.appendChild(table);
+        mount.appendChild(cards);
+        return;
+      }
+      const table = el("<table class='live pboard'><thead><tr>" +
+        "<th data-k='webName'>Player</th><th data-k='team'>Team</th><th data-k='position'>Pos</th>" +
+        "<th class='num' data-k='minutes'>Mins</th><th class='num' data-k='livePoints'>Pts</th>" +
+        "<th class='num' data-k='nowCost'>£price</th><th class='num' data-k='netTransfers'>Net xfers</th>" +
+        "<th data-k='priceEstimate'>Estimate</th></tr></thead><tbody></tbody></table>");
+      table.querySelectorAll("th").forEach((th) => {
+        th.onclick = () => {
+          const k = th.getAttribute("data-k");
+          if (state.boardSort.key === k) state.boardSort.dir *= -1;
+          else state.boardSort = { key: k, dir: k === "webName" || k === "team" || k === "position" || k === "priceEstimate" ? 1 : -1 };
+          renderBoard();
+        };
+      });
+      const tb = table.querySelector("tbody");
+      rows.forEach((p) => {
+        tb.appendChild(el("<tr><td>" + escapeHtml(p.webName) + "</td><td>" + escapeHtml(p.team) +
+          "</td><td>" + escapeHtml(p.position) + "</td><td class='num'>" + fmt(p.minutes) +
+          "</td><td class='num'>" + fmt(p.livePoints) + "</td><td class='num price'>" + officialPrice(p) +
+          "</td><td class='num'>" + fmtNet(p.netTransfers) + "</td><td>" + estHtml(p) + "</td></tr>"));
+      });
+      const cards = el("<div class='pboard-cards'></div>");
+      rows.forEach((p) => {
+        cards.appendChild(el(
+          "<article class='p-card'><div class='p-card-top'><div><strong>" + escapeHtml(p.webName) +
+          "</strong> <span class='muted'>" + escapeHtml(p.team) + " · " + escapeHtml(p.position) +
+          "</span></div><div class='p-card-pts'>" + fmt(p.livePoints) + "</div></div>" +
+          "<div class='muted'>" + fmt(p.minutes) + "' · " + officialPrice(p) + " · net " + fmtNet(p.netTransfers) +
+          "</div><div>" + estHtml(p) + "</div></article>"
+        ));
+      });
+      mount.innerHTML = "";
+      mount.appendChild(table);
+      mount.appendChild(cards);
+    }
+    async function loadPrices(quiet) {
+      try {
+        const data = await api("/live/prices/estimate");
+        state.prices = data;
+        if (state.boardFilter === "price") renderBoard();
+      } catch (err) {
+        if (!quiet) document.getElementById("boardNote").textContent = err.message;
+      }
+    }
+    async function loadBoard(quiet) {
+      try {
+        const data = await api("/live/board");
+        state.board = data;
+        state.gameweek = data.gameweek;
+        setPills(data.gameweek, !!(data.live || (state.entry && state.entry.live) || (state.league && state.league.live)));
+        await loadPrices(true);
+        renderBoard();
+        scheduleRefresh();
+      } catch (err) {
+        if (!quiet) document.getElementById("boardNote").textContent = err.message;
+      }
+    }
+    document.getElementById("boardChips").addEventListener("click", (e) => {
+      const btn = e.target.closest("button[data-filter]");
+      if (!btn) return;
+      state.boardFilter = btn.getAttribute("data-filter");
+      if (state.boardFilter === "price") {
+        state.boardSort = { key: "netTransfers", dir: -1 };
+        loadPrices();
+      } else state.boardSort = { key: "livePoints", dir: -1 };
+      document.querySelectorAll("#boardChips button").forEach((b) => b.classList.toggle("active", b === btn));
+      renderBoard();
+    });
+    document.getElementById("boardToggle").addEventListener("click", () => {
+      state.boardOpen = !state.boardOpen;
+      try { localStorage.setItem("fpl.boardOpen", state.boardOpen ? "1" : "0"); } catch (e) {}
+      applyBoardOpen();
+    });
+
+    (async function boot() {
+      try { state.boardOpen = localStorage.getItem("fpl.boardOpen") === "1"; } catch (e) {}
+      applyBoardOpen();
+      await loadBoard();
+      const params = new URLSearchParams(location.search);
+      let entryId = Number(params.get("entry") || params.get("entryId") || 0);
+      let leagueId = Number(params.get("league") || params.get("leagueId") || 0);
+      try {
+        if (!entryId) entryId = Number(localStorage.getItem("fpl.entryId") || 0);
+        if (!leagueId) leagueId = Number(localStorage.getItem("fpl.leagueId") || 0);
+      } catch (e) {}
+      if (entryId) {
+        document.querySelector('input[name="entryId"]').value = entryId;
+        await loadEntry(entryId);
+      }
+      if (leagueId) {
+        document.querySelector('input[name="leagueId"]').value = leagueId;
+        await loadLeague(leagueId);
+      }
+    })();
   </script>
 </body>
 </html>
