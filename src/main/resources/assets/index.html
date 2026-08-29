@@ -3,6 +3,10 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="theme-color" content="#10141c">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+  <link rel="manifest" href="/manifest.webmanifest">
   <title>FPL Live Tracker</title>
   <style>
     :root {
@@ -32,6 +36,25 @@
     h1 span { color: var(--accent); }
     .pill { font-size: 0.75rem; padding: 0.15rem 0.45rem; border: 1px solid var(--line); border-radius: 999px; color: var(--muted); }
     .pill.live { color: var(--accent); border-color: #2f6b50; }
+    #notifyBtn.on { border-color: var(--accent); color: var(--accent); }
+
+    #toastHost {
+      position: fixed; left: 0.7rem; right: 0.7rem; bottom: 0.9rem;
+      z-index: 50; display: flex; flex-direction: column-reverse; gap: 0.4rem;
+      pointer-events: none;
+    }
+    .toast {
+      pointer-events: auto;
+      background: #243b2f; border: 1px solid #2f6b50;
+      border-radius: 10px; padding: 0.7rem 0.85rem;
+      box-shadow: 0 10px 28px #0008;
+      animation: toastIn 0.18s ease-out;
+    }
+    .toast .kicker { font-size: 0.7rem; color: var(--accent); text-transform: uppercase; letter-spacing: 0.04em; }
+    .toast .body { font-size: 0.95rem; font-weight: 650; margin-top: 0.12rem; }
+    .toast.hint { background: var(--bg-3); border-color: var(--line); }
+    .toast.hint .kicker { color: var(--muted); }
+    @keyframes toastIn { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: none; } }
     main { padding: 0.9rem 1rem 3rem; max-width: 1400px; margin: 0 auto; }
     form.bar { display: flex; gap: 0.45rem; flex-wrap: wrap; align-items: end; }
     label { display: flex; flex-direction: column; gap: 0.2rem; font-size: 0.75rem; color: var(--muted); }
@@ -165,9 +188,11 @@
       <h1>FPL <span>Live</span> Tracker</h1>
       <span class="pill" id="gwPill">GW —</span>
       <span class="pill" id="livePill">idle</span>
+      <button type="button" id="notifyBtn">Notify off</button>
       <span class="muted" id="refreshHint"></span>
     </div>
   </header>
+  <div id="toastHost" aria-live="polite"></div>
   <main>
     <form class="bar" id="search">
       <label>FPL ID <input name="entryId" inputmode="numeric" placeholder="e.g. 1234567" required></label>
@@ -196,7 +221,8 @@
     const state = {
       entryId: null, gameweek: null, live: false, autosubs: true, detailed: true,
       entry: null, leagues: [], league: null, picks: null, sort: { key: "liveRank", dir: 1 },
-      timer: null,
+      timer: null, notifyTimer: null,
+      notify: false, notifySeen: {}, notifyReady: false,
       board: null, prices: null, boardFilter: "all", boardSort: { key: "livePoints", dir: -1 }, boardOpen: false
     };
 
@@ -309,6 +335,109 @@
       if (leagueInput) leagueInput.value = (state.league && state.league.leagueId) || "";
     }
 
+
+    function notifySupported() {
+      return typeof Notification !== "undefined";
+    }
+    function notifyGranted() {
+      return notifySupported() && Notification.permission === "granted";
+    }
+    function paintNotifyBtn() {
+      const btn = document.getElementById("notifyBtn");
+      if (!btn) return;
+      const on = !!state.notify;
+      btn.textContent = on ? "Notify on" : "Notify off";
+      btn.classList.toggle("on", on);
+    }
+    function showToast(body, hint) {
+      const host = document.getElementById("toastHost");
+      if (!host) return;
+      const node = el("<div class='toast" + (hint ? " hint" : "") + "'><div class='kicker'>" +
+        (hint ? "FPL Live" : "Squad tick") + "</div><div class='body'></div></div>");
+      node.querySelector(".body").textContent = body;
+      host.appendChild(node);
+      setTimeout(() => { try { node.remove(); } catch (e) {} }, hint ? 7000 : 5500);
+    }
+    function primeNotify(players) {
+      state.notifySeen = {};
+      (players || []).forEach((pl) => {
+        const id = pl.element;
+        if (id == null) return;
+        state.notifySeen[id] = Number(pl.contribution) || 0;
+      });
+      state.notifyReady = true;
+    }
+    function maybeNotifySquad(players) {
+      if (!state.notify) return;
+      const list = players || [];
+      if (!state.notifyReady) {
+        primeNotify(list);
+        return;
+      }
+      list.forEach((pl) => {
+        const id = pl.element;
+        if (id == null) return;
+        const next = Number(pl.contribution) || 0;
+        const prev = state.notifySeen[id];
+        state.notifySeen[id] = next;
+        if (prev == null || next <= prev) return;
+        const name = pl.webName || pl.name || ("Player " + id);
+        const tag = pl.captain ? " (C)" : (pl.viceCaptain ? " (VC)" : "");
+        const body = name + tag + " " + prev + " → " + next;
+        showToast(body, false);
+        try { if (navigator.vibrate) navigator.vibrate(80); } catch (e) {}
+        if (!notifyGranted()) return;
+        try {
+          const n = new Notification("FPL Live", {
+            body: body,
+            tag: "fpl-pts-" + id,
+            renotify: true
+          });
+          n.onclick = () => { try { window.focus(); } catch (e) {} n.close(); };
+        } catch (e) {}
+      });
+    }
+    function stopNotifyPoll() {
+      if (state.notifyTimer) {
+        clearInterval(state.notifyTimer);
+        state.notifyTimer = null;
+      }
+    }
+    function startNotifyPoll() {
+      stopNotifyPoll();
+      if (!(state.notify && state.entryId)) return;
+      state.notifyTimer = setInterval(() => {
+        if (state.entryId) loadEntry(state.entryId, true);
+      }, 30000);
+    }
+    async function setNotify(on) {
+      if (on) {
+        if (!state.entryId) {
+          alert("Enter your FPL ID first so I only notify for your squad.");
+          return;
+        }
+        if (notifySupported() && Notification.permission !== "granted") {
+          try { await Notification.requestPermission(); } catch (e) {}
+        }
+        state.notify = true;
+        state.notifyReady = false;
+        try { localStorage.setItem("fpl.notify", "1"); } catch (e) {}
+        paintNotifyBtn();
+        if (!notifyGranted()) {
+          showToast("Alerts will pop on this page. On iPhone: Share → Add to Home Screen for lock-screen banners.", true);
+        }
+        await loadEntry(state.entryId, true);
+        startNotifyPoll();
+      } else {
+        state.notify = false;
+        state.notifyReady = false;
+        state.notifySeen = {};
+        try { localStorage.setItem("fpl.notify", "0"); } catch (e) {}
+        stopNotifyPoll();
+        paintNotifyBtn();
+      }
+    }
+
     function scheduleRefresh() {
       clearInterval(state.timer);
       const live = !!(state.board && state.board.live) || !!(state.entry && state.entry.live) || !!(state.league && state.league.live);
@@ -354,6 +483,8 @@
         persistView();
         render();
         scheduleRefresh();
+        maybeNotifySquad(entry.players);
+        startNotifyPoll();
       } catch (err) {
         app.innerHTML = "<p class='error'>" + escapeHtml(err.message) + "</p>";
       }
@@ -838,9 +969,15 @@
       applyBoardOpen();
     });
 
+    document.getElementById("notifyBtn").addEventListener("click", () => {
+      setNotify(!state.notify);
+    });
+
     (async function boot() {
       try { state.boardOpen = localStorage.getItem("fpl.boardOpen") === "1"; } catch (e) {}
       applyBoardOpen();
+      try { state.notify = localStorage.getItem("fpl.notify") === "1"; } catch (e) {}
+      paintNotifyBtn();
       await loadBoard();
       const params = new URLSearchParams(location.search);
       let entryId = Number(params.get("entry") || params.get("entryId") || 0);
@@ -856,6 +993,10 @@
       if (leagueId) {
         document.querySelector('input[name="leagueId"]').value = leagueId;
         await loadLeague(leagueId);
+      }
+      if (state.notify && state.entryId) startNotifyPoll();
+      if ("serviceWorker" in navigator) {
+        navigator.serviceWorker.register("/sw.js").catch(function () {});
       }
     })();
   </script>

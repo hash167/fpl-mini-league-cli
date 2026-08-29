@@ -1,0 +1,8 @@
+{
+  "name": "FPL Live Tracker",
+  "short_name": "FPL Live",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#10141c",
+  "theme_color": "#10141c"
+}
