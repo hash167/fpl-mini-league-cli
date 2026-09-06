@@ -123,7 +123,7 @@ class FplServiceTest {
         assertEquals(listOf(136268), result.leagues.map { it.id })
         assertEquals("Play Now Cry Later", result.leagues.single().name)
         assertFalse(client.standingsRequested.contains(14))
-        assertEquals(listOf(53998, 136268), client.standingsRequested)
+        assertEquals(setOf(53998, 136268), client.standingsRequested.toSet())
     }
 
     @Test
@@ -459,6 +459,73 @@ class FplServiceTest {
     }
 
     @Test
+    fun `liveLeague board exposes gwNet beside liveTotal with transfer hits applied`() {
+        val history = parse(
+            """{"current":[
+              {"event":1,"points":31,"total_points":31,"overall_rank":8411328,"event_transfers_cost":0},
+              {"event":2,"points":33,"total_points":56,"overall_rank":7010202,"event_transfers":3,"event_transfers_cost":8}
+            ]}"""
+        )
+        val event = parse(
+            """{"active_chip":null,"automatic_subs":[],
+              "entry_history":{"event":2,"points":33,"total_points":56,"overall_rank":7010202,
+                "bank":0,"value":1003,"event_transfers":3,"event_transfers_cost":8},
+              "picks":[
+                {"element":10,"position":1,"multiplier":2,"is_captain":true,"is_vice_captain":false},
+                {"element":11,"position":2,"multiplier":1,"is_captain":false,"is_vice_captain":true}
+              ]}"""
+        )
+        val liveJson = parse(
+            """{"elements":[
+              {"id":10,"stats":{"minutes":90,"total_points":10,"bonus":0,"bps":20}},
+              {"id":11,"stats":{"minutes":90,"total_points":13,"bonus":0,"bps":10}}
+            ]}"""
+        )
+        val client = FakeFplClient(
+            bootstrap = parse(
+                """{"events":[{"id":2,"is_current":true}],
+                "teams":[{"id":1,"short_name":"ARS"},{"id":2,"short_name":"MCI"}],
+                "elements":[
+                  {"id":10,"first_name":"Bukayo","second_name":"Saka","team":1,"element_type":3},
+                  {"id":11,"first_name":"Erling","second_name":"Haaland","team":2,"element_type":4}
+                ]}"""
+            ),
+            standings = mapOf(
+                136268 to LeagueStandingsPage(
+                    results = listOf(
+                        StandingRow(
+                            rank = 1,
+                            entryId = 5_346_642,
+                            entryName = "Play Now Cry Later XI",
+                            managerName = "Erik",
+                            lastRank = 2,
+                            officialTotal = 56,
+                            eventTotal = 33
+                        )
+                    ),
+                    hasNext = false,
+                    totalEntries = 10,
+                    leagueName = "Play Now Cry Later"
+                )
+            ),
+            livePoints = mapOf(10 to 10, 11 to 13),
+            eventLiveJson = liveJson,
+            entryEvents = mapOf((5_346_642 to 2) to event),
+            historyByEntry = mapOf(5_346_642 to history)
+        )
+
+        val table = FplService(client).liveLeague(136268, 2)
+        val team = table.teams.single()
+        // Display contract: overall season live total + current GW live points (net of hits).
+        assertEquals(56, team.liveTotal)
+        assertEquals(33, team.gwGross)
+        assertEquals(8, team.transferCost)
+        assertEquals(25, team.gwNet)
+        assertEquals(33, team.livePoints)
+        assertEquals(25, team.gwGross - team.transferCost)
+    }
+
+    @Test
     fun `liveLeague exposes lastRank for mini-league place delta`() {
         val history = parse(
             """{"current":[
@@ -489,6 +556,63 @@ class FplServiceTest {
         assertEquals("official", team.overallRankLabel)
         assertEquals(4L, rankMovement(team.liveRank.toLong(), team.lastRank?.toLong()))
     }
+
+    @Test
+    fun `miniLeagues serves last-good cache when official API fails later`() {
+        val client = FakeFplClient(
+            bootstrap = parse("""{"events":[{"id":2,"is_current":true}]}"""),
+            classicLeagues = listOf(LeagueRef(1, "Mini Friends")),
+            standings = mapOf(
+                1 to LeagueStandingsPage(
+                    results = listOf(StandingRow(1, 100, "A", "Ann")),
+                    hasNext = false,
+                    totalEntries = 12
+                )
+            )
+        )
+        val t = java.util.concurrent.atomic.AtomicLong(1_000L)
+        val service = FplService(client, clock = { t.get() })
+        val first = service.miniLeagues(100)
+        assertEquals(listOf(1), first.leagues.map { it.id })
+        assertEquals(false, first.stale)
+
+        t.addAndGet(MINI_LEAGUES_CACHE_TTL_MS + 1)
+        client.failWith = FplApiException("FPL API timed out", 504)
+        val second = service.miniLeagues(100)
+        assertEquals(true, second.stale)
+        assertEquals(listOf(1), second.leagues.map { it.id })
+        assertEquals("Mini Friends", second.leagues.single().name)
+        assertTrue(!second.error.isNullOrBlank())
+    }
+
+    @Test
+    fun `miniLeagues fail-fast under 3s when FPL hangs and cache is empty`() {
+        val hung = object : FplClient by FakeFplClient(
+            bootstrap = parse("""{"events":[{"id":2,"is_current":true}]}""")
+        ) {
+            override fun bootstrap(): JsonObject {
+                Thread.sleep(10_000)
+                return parse("""{"events":[{"id":2,"is_current":true}]}""")
+            }
+        }
+        val start = System.currentTimeMillis()
+        val ex = kotlin.test.assertFailsWith<FplApiException> {
+            FplService(hung, miniLeaguesDeadlineMs = 400).miniLeagues(100)
+        }
+        val elapsed = System.currentTimeMillis() - start
+        assertTrue(elapsed < 3000, "elapsed ${elapsed}ms")
+        assertEquals(504, ex.statusCode)
+        assertTrue(ex.message!!.contains("slow") || ex.message!!.contains("unavailable") || ex.message!!.contains("timed out"))
+    }
+
+    @Test
+    fun `TtlCache returns last-good value when loader fails`() {
+        val cache = TtlCache<String>(ttlMs = 1)
+        assertEquals("ok", cache.get { "ok" })
+        Thread.sleep(5)
+        assertEquals("ok", cache.get { throw FplApiException("down", 502) })
+        assertEquals("ok", cache.peek())
+    }
 }
 
 class FakeFplClient(
@@ -505,10 +629,13 @@ class FakeFplClient(
     private val historyByEntry: Map<Int, JsonObject> = emptyMap(),
     private val entryEvents: Map<Pair<Int, Int>, JsonObject> = emptyMap()
 ) : FplClient {
-    val standingsRequested = mutableListOf<Int>()
-    override fun bootstrap(): JsonObject = bootstrap
-    override fun userClassicLeagues(entryId: Int): List<LeagueRef> = classicLeagues
+    @Volatile var failWith: Exception? = null
+    val standingsRequested = java.util.Collections.synchronizedList(mutableListOf<Int>())
+    private fun boom() { failWith?.let { throw it } }
+    override fun bootstrap(): JsonObject { boom(); return bootstrap }
+    override fun userClassicLeagues(entryId: Int): List<LeagueRef> { boom(); return classicLeagues }
     override fun leagueStandingsPage(leagueId: Int, page: Int): LeagueStandingsPage {
+        boom()
         standingsRequested += leagueId
         standingsErrors[leagueId]?.let { throw it }
         return standings[leagueId] ?: throw FplApiException("no standings for $leagueId", 500)
