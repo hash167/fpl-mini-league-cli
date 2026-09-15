@@ -1,4 +1,4 @@
-FROM fpl-web:1.15
+FROM fpl-web:1.20
 WORKDIR /app
 USER root
 COPY fpl-web-1.0.jar /app/app.jar
