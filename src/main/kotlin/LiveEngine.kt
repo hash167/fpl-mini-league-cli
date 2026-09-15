@@ -127,10 +127,16 @@ fun allFixturesFinished(teamFixtures: List<FixtureInfo>): Boolean =
 fun anyFixtureStarted(teamFixtures: List<FixtureInfo>): Boolean =
     teamFixtures.any { it.started }
 
+/**
+ * Prospective live autosub eligibility (live-board style, not official FT-only).
+ * A blank starter can be replaced once their fixture has kicked off (started /
+ * in progress / finished). Empty fixture list = no game this GW → eligible.
+ * Pre-kickoff blanks must wait.
+ */
 fun needsAutoSub(minutes: Int, teamFixtures: List<FixtureInfo>): Boolean {
     if (minutes > 0) return false
     if (teamFixtures.isEmpty()) return true
-    return teamFixtures.all { fixtureFinished(it) }
+    return teamFixtures.any { it.started }
 }
 
 fun benchCanComeOn(minutes: Int, teamFixtures: List<FixtureInfo>): Boolean {
@@ -209,8 +215,9 @@ fun isEligibleSwapElements(
 
 /**
  * Apply official FPL automatic_subs first, then compute any remaining
- * prospective subs the way FPL does (bench order, GK-only-for-GK,
- * 3 DEF / 2 MID / 1 FWD minimums).
+ * prospective live autosubs (bench order, GK-only-for-GK, 3 DEF / 2 MID /
+ * 1 FWD minimums). Starters with 0' are eligible once their fixture has
+ * started (in progress or finished); never before kickoff.
  */
 fun computeAutoSubs(
     picks: List<AutoSubPick>,
@@ -239,7 +246,10 @@ fun computeAutoSubs(
 
     for (starter in starters) {
         if (starter.element !in playing) continue
-        if (!starter.fixturesFinished || starter.minutes > 0) continue
+        // Live prospective: 0' after kickoff (or no fixture / finished). Not before KO.
+        val blankEligible = starter.minutes == 0 &&
+            (starter.fixtureStarted || starter.fixturesFinished)
+        if (!blankEligible) continue
         val replacement = bench.firstOrNull { b ->
             b.element !in usedBench &&
                 (b.minutes > 0 || b.fixtureStarted) &&
@@ -267,7 +277,8 @@ fun playingXi(picks: List<AutoSubPick>, subs: List<AppliedSub>): Set<Int> {
 fun armbandHolder(picks: List<AutoSubPick>, playing: Set<Int>): Int? {
     val cap = picks.firstOrNull { it.isCaptain } ?: return null
     val vc = picks.firstOrNull { it.isViceCaptain }
-    val captainDoneBlank = cap.fixturesFinished && cap.minutes == 0
+    // Align with live autosubs: blank captain after kickoff hands armband to VC.
+    val captainDoneBlank = cap.minutes == 0 && (cap.fixtureStarted || cap.fixturesFinished)
     return if (!captainDoneBlank) {
         cap.element
     } else if (vc != null && (vc.element in playing || !vc.fixturesFinished)) {

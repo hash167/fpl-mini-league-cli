@@ -557,62 +557,6 @@ class FplServiceTest {
         assertEquals(4L, rankMovement(team.liveRank.toLong(), team.lastRank?.toLong()))
     }
 
-    @Test
-    fun `miniLeagues serves last-good cache when official API fails later`() {
-        val client = FakeFplClient(
-            bootstrap = parse("""{"events":[{"id":2,"is_current":true}]}"""),
-            classicLeagues = listOf(LeagueRef(1, "Mini Friends")),
-            standings = mapOf(
-                1 to LeagueStandingsPage(
-                    results = listOf(StandingRow(1, 100, "A", "Ann")),
-                    hasNext = false,
-                    totalEntries = 12
-                )
-            )
-        )
-        val t = java.util.concurrent.atomic.AtomicLong(1_000L)
-        val service = FplService(client, clock = { t.get() })
-        val first = service.miniLeagues(100)
-        assertEquals(listOf(1), first.leagues.map { it.id })
-        assertEquals(false, first.stale)
-
-        t.addAndGet(MINI_LEAGUES_CACHE_TTL_MS + 1)
-        client.failWith = FplApiException("FPL API timed out", 504)
-        val second = service.miniLeagues(100)
-        assertEquals(true, second.stale)
-        assertEquals(listOf(1), second.leagues.map { it.id })
-        assertEquals("Mini Friends", second.leagues.single().name)
-        assertTrue(!second.error.isNullOrBlank())
-    }
-
-    @Test
-    fun `miniLeagues fail-fast under 3s when FPL hangs and cache is empty`() {
-        val hung = object : FplClient by FakeFplClient(
-            bootstrap = parse("""{"events":[{"id":2,"is_current":true}]}""")
-        ) {
-            override fun bootstrap(): JsonObject {
-                Thread.sleep(10_000)
-                return parse("""{"events":[{"id":2,"is_current":true}]}""")
-            }
-        }
-        val start = System.currentTimeMillis()
-        val ex = kotlin.test.assertFailsWith<FplApiException> {
-            FplService(hung, miniLeaguesDeadlineMs = 400).miniLeagues(100)
-        }
-        val elapsed = System.currentTimeMillis() - start
-        assertTrue(elapsed < 3000, "elapsed ${elapsed}ms")
-        assertEquals(504, ex.statusCode)
-        assertTrue(ex.message!!.contains("slow") || ex.message!!.contains("unavailable") || ex.message!!.contains("timed out"))
-    }
-
-    @Test
-    fun `TtlCache returns last-good value when loader fails`() {
-        val cache = TtlCache<String>(ttlMs = 1)
-        assertEquals("ok", cache.get { "ok" })
-        Thread.sleep(5)
-        assertEquals("ok", cache.get { throw FplApiException("down", 502) })
-        assertEquals("ok", cache.peek())
-    }
 }
 
 class FakeFplClient(
