@@ -19,4 +19,20 @@ class UiAssetsContractTest {
         assertTrue(html.contains("rank-pill"), "cards must use rank pills for Pos")
         assertTrue(html.contains("playersRemaining"), "Yet column must map to playersRemaining")
     }
+
+    @Test
+    fun `sitewide LiveFPL navy and white card scheme`() {
+        val html = Files.readString(
+            Paths.get("src/main/resources/assets/index.html")
+        )
+        assertTrue(html.contains("--bg: #0e111d"), "page background must be LiveFPL navy")
+        assertTrue(html.contains("--card: #ffffff"), "cards must use white LiveFPL surface")
+        assertTrue(html.contains("background: var(--card); color: var(--card-text);"), "generic .card must use white LiveFPL card colors")
+        assertTrue(html.contains(".card .muted { color: var(--card-muted); }"), "muted text on cards must use card-muted")
+        assertTrue(html.contains("id=\"homeBoard\""), "home live board section must remain")
+        assertTrue(html.contains("data-filter=\"price\""), "price rise filter must remain")
+        assertTrue(html.contains("toastHost"), "toast host must remain for notifications")
+        assertTrue(html.contains("#toastHost"), "toast host styles must remain")
+        assertTrue(html.contains("boardChips"), "board filter chips must remain")
+    }
 }
