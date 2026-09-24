@@ -3,7 +3,7 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <meta name="theme-color" content="#10141c">
+  <meta name="theme-color" content="#0e111d">
   <meta name="apple-mobile-web-app-capable" content="yes">
   <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
   <link rel="manifest" href="/manifest.webmanifest">
@@ -11,23 +11,30 @@
   <style>
     :root {
       color-scheme: dark;
-      --bg: #10141c;
-      --bg-2: #171d28;
-      --bg-3: #1f2734;
-      --line: #2b3545;
+      --bg: #0e111d;
+      --bg-2: #12121b;
+      --bg-3: #1a1d2b;
+      --line: #2a2f42;
       --text: #e8edf5;
-      --muted: #93a0b5;
-      --accent: #7dd3a8;
+      --muted: #8b93a7;
+      --accent: #4cd964;
       --accent-2: #f0c14b;
-      --danger: #f07178;
-      --chip: #6cb6ff;
+      --danger: #ff2d55;
+      --chip: #3d7eff;
+      --card: #ffffff;
+      --card-text: #10141c;
+      --card-muted: #6b7280;
+      --card-ink: #1a2340;
+      --rank-up: #4cd964;
+      --rank-down: #ff2d55;
+      --rank-flat: #8b93a7;
     }
     * { box-sizing: border-box; }
     html, body { margin: 0; padding: 0; background: var(--bg); color: var(--text); }
     body { font: 14px/1.4 "IBM Plex Sans", "Segoe UI", system-ui, sans-serif; }
     header {
       position: sticky; top: 0; z-index: 20;
-      background: #0c1017ee; backdrop-filter: blur(8px);
+      background: #0a0d16ee; backdrop-filter: blur(8px);
       border-bottom: 1px solid var(--line);
       padding: 0.7rem 1rem;
     }
@@ -115,35 +122,159 @@
     .scorers b { color: var(--accent); font-weight: 650; }
     .scorers .zero { opacity: 0.7; }
     .standings-table-wrap { width: 100%; }
-    .mobile-standings { display: none; }
-    .mgr-card {
-      background: var(--bg-3); border: 1px solid var(--line); border-radius: 10px;
-      padding: 0.7rem 0.75rem; cursor: pointer;
-    }
-    .mgr-card.selected { background: #243b2f; border-color: #2f6b50; }
-    .mgr-card-head { display: flex; justify-content: space-between; align-items: flex-start; gap: 0.65rem; }
-    .mgr-card-ranks { display: flex; gap: 0.55rem; flex-wrap: wrap; }
-    .mgr-rank { min-width: 3.2rem; }
-    .mgr-rank span { display: block; font-size: 0.68rem; color: var(--muted); text-transform: uppercase; letter-spacing: 0.04em; }
-    .mgr-rank b { font-size: 1.05rem; }
-    .mgr-scores { text-align: right; flex: 0 0 auto; display: flex; flex-direction: column; align-items: flex-end; gap: 0.2rem; }
-    .mgr-live-total span, .mgr-gw span { display: block; font-size: 0.68rem; color: var(--muted); text-transform: uppercase; letter-spacing: 0.04em; }
-    .mgr-live-total b { display: block; font-size: 1.45rem; line-height: 1.1; color: var(--accent); }
-    .mgr-gw { margin-top: 0; }
-    .mgr-gw b { display: block; font-size: 1.05rem; line-height: 1.1; color: var(--text); font-variant-numeric: tabular-nums; }
-    .mgr-gw .hit { font-size: 0.68rem; color: var(--danger); font-weight: 650; }
     td.gw-live { font-variant-numeric: tabular-nums; font-weight: 650; }
     td.gw-live .hit { display: block; font-size: 0.68rem; color: var(--danger); font-weight: 650; }
-    .mgr-identity { margin-top: 0.45rem; }
-    .mgr-identity .team { font-size: 0.8rem; }
-    .mgr-overall { margin-top: 0.25rem; font-size: 0.78rem; color: var(--muted); }
-    .scorer-pills { display: flex; flex-wrap: wrap; gap: 0.3rem; margin-top: 0.5rem; }
+
+    /* LiveFPL-style mini-league board */
+    .league-board {
+      background: transparent; border: none; padding: 0; margin: 0.75rem 0;
+    }
+    .league-toolbar {
+      display: flex; flex-wrap: wrap; gap: 0.45rem; align-items: center;
+      justify-content: space-between;
+      background: var(--card); color: var(--card-text);
+      border-radius: 14px; padding: 0.55rem 0.7rem;
+      box-shadow: 0 6px 20px #0005;
+    }
+    .league-toolbar .muted { color: var(--card-muted); }
+    .league-toolbar button {
+      background: #f3f4f8; color: var(--card-text); border-color: #d8dbe6;
+    }
+    .league-toolbar button:hover { background: #e8ebf3; }
+    .league-toolbar button.active {
+      background: #e8fff0; border-color: var(--rank-up); color: #0f7a2c;
+    }
+    .league-title {
+      text-align: center; color: #fff; font-weight: 650;
+      margin: 0.85rem 0 0.45rem; font-size: 0.98rem; letter-spacing: 0.01em;
+    }
+    .league-cols {
+      display: grid;
+      grid-template-columns: 2.6rem minmax(0, 1.6fr) 2.1rem 3.4rem 2.4rem 2.8rem 1rem;
+      gap: 0.25rem; align-items: end;
+      padding: 0.25rem 0.75rem 0.4rem;
+      color: #c5cbe0; font-size: 0.72rem; text-transform: none; font-weight: 600;
+    }
+    .league-cols span { text-align: center; }
+    .league-cols .c-mgr { text-align: left; padding-left: 0.15rem; }
+    .league-cards { display: flex; flex-direction: column; gap: 0.55rem; }
+    .lf-card {
+      background: var(--card); color: var(--card-text);
+      border-radius: 15px; padding: 0.55rem 0.65rem 0.6rem;
+      box-shadow: 0 8px 22px #00000055;
+      cursor: pointer; border: 1px solid transparent;
+      transition: box-shadow 0.15s ease, border-color 0.15s ease;
+    }
+    .lf-card:hover { box-shadow: 0 10px 28px #00000066; }
+    .lf-card.selected { border-color: #7dd3a8; box-shadow: 0 0 0 2px #7dd3a855, 0 8px 22px #00000055; }
+    .lf-row {
+      display: grid;
+      grid-template-columns: 2.6rem minmax(0, 1.6fr) 2.1rem 3.4rem 2.4rem 2.8rem 1rem;
+      gap: 0.25rem; align-items: center;
+    }
+    .lf-pos { display: flex; flex-direction: column; align-items: center; gap: 0.12rem; }
+    .rank-pill {
+      width: 2.15rem; height: 2.15rem; border-radius: 999px;
+      display: flex; flex-direction: column; align-items: center; justify-content: center;
+      color: #fff; font-weight: 800; font-size: 0.78rem; line-height: 1;
+      font-variant-numeric: tabular-nums;
+      box-shadow: 0 2px 6px #0003;
+    }
+    .rank-pill .arr { font-size: 0.62rem; line-height: 0.9; margin-bottom: 0.02rem; }
+    .rank-pill.rise { background: var(--rank-up); }
+    .rank-pill.drop { background: var(--rank-down); }
+    .rank-pill.flat { background: var(--rank-flat); }
+    .rank-delta {
+      font-size: 0.65rem; color: var(--card-muted); font-variant-numeric: tabular-nums;
+      font-weight: 650; min-height: 0.85rem;
+    }
+    .rank-delta.rise { color: #1a9a3a; }
+    .rank-delta.drop { color: var(--rank-down); }
+    .lf-mgr { min-width: 0; padding-right: 0.15rem; }
+    .lf-mgr .team {
+      font-weight: 750; color: var(--card-ink); font-size: 0.92rem;
+      white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+    }
+    .lf-mgr .name {
+      color: var(--card-muted); font-size: 0.78rem;
+      white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+    }
+    .lf-pills { display: flex; flex-wrap: wrap; gap: 0.25rem; margin-top: 0.28rem; }
+    .mini-pill {
+      font-size: 0.65rem; padding: 0.12rem 0.4rem; border-radius: 999px;
+      border: 1px solid #d5d9e4; color: var(--card-ink); background: #f7f8fb;
+      font-weight: 650; white-space: nowrap;
+    }
+    .mini-pill.chip {
+      background: #eef5ff; border-color: #b7d0ff; color: #1d4fb8;
+    }
+    .lf-yet, .lf-gw, .lf-total {
+      text-align: center; font-weight: 750; color: var(--card-ink);
+      font-variant-numeric: tabular-nums; font-size: 0.95rem;
+    }
+    .lf-gw .hit {
+      display: block; font-size: 0.62rem; color: var(--rank-down); font-weight: 700;
+    }
+    .lf-cap {
+      text-align: center; min-width: 0;
+    }
+    .lf-cap .c-name {
+      display: block; font-weight: 750; color: var(--card-ink); font-size: 0.78rem;
+      white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+    }
+    .lf-cap .vc-name {
+      display: block; color: var(--card-muted); font-size: 0.65rem;
+      white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+    }
+    .lf-chevron {
+      text-align: center; color: #b0b6c8; font-size: 1.1rem; font-weight: 300;
+    }
+    .lf-card.expanded .lf-chevron { transform: rotate(90deg); }
+    .lf-detail {
+      display: none; margin-top: 0.55rem; padding-top: 0.5rem;
+      border-top: 1px solid #e6e8f0;
+    }
+    .lf-card.expanded .lf-detail { display: block; }
+    .lf-meta { display: flex; flex-wrap: wrap; gap: 0.3rem; margin-bottom: 0.45rem; }
+    .scorer-pills { display: flex; flex-wrap: wrap; gap: 0.3rem; margin-top: 0.15rem; }
     .scorer-pill {
       font-size: 0.72rem; padding: 0.18rem 0.45rem; border-radius: 999px;
-      background: #243246; border: 1px solid var(--line); color: var(--text);
+      background: #f3f4f8; border: 1px solid #d8dbe6; color: var(--card-text);
     }
-    .scorer-pill b { color: var(--accent); }
-    .scorer-pill.zero { color: var(--muted); }
+    .scorer-pill b { color: #0f7a2c; }
+    .scorer-pill.zero { color: var(--card-muted); }
+    .scorer-pill.hi { background: #e8fff0; border-color: #9ee0b0; }
+    .scorer-pill.lo { background: #ffecef; border-color: #ffb3c1; }
+    .lf-squad {
+      display: grid; grid-template-columns: repeat(auto-fill, minmax(4.6rem, 1fr));
+      gap: 0.35rem; margin-top: 0.45rem;
+    }
+    .lf-pl {
+      background: #f7f8fb; border: 1px solid #e2e5ef; border-radius: 10px;
+      padding: 0.3rem 0.35rem; text-align: center;
+    }
+    .lf-pl.bench { opacity: 0.72; }
+    .lf-pl .pn {
+      font-size: 0.68rem; font-weight: 700; color: var(--card-ink);
+      white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+    }
+    .lf-pl .pp {
+      margin-top: 0.18rem; font-size: 0.78rem; font-weight: 800;
+      border-radius: 6px; padding: 0.1rem 0.2rem;
+      background: #e8ebf3; color: var(--card-ink);
+      font-variant-numeric: tabular-nums;
+    }
+    .lf-pl .pp.hi { background: #4cd964; color: #fff; }
+    .lf-pl .pp.mid { background: #c8f0d0; color: #0f3d1c; }
+    .lf-pl .pp.lo { background: #ff2d55; color: #fff; }
+    .lf-pl .pp.zero { background: #eceff5; color: var(--card-muted); }
+    .lf-pl .tag { font-size: 0.58rem; color: var(--card-muted); }
+    table.live-standings { display: none; }
+    .mobile-standings { display: none; }
+
+    @media (min-width: 900px) {
+      .league-board { max-width: 720px; margin-left: auto; margin-right: auto; }
+    }
     .price { color: var(--chip); font-variant-numeric: tabular-nums; }
     .price.up { color: var(--accent); }
     .price.down { color: var(--danger); }
@@ -181,9 +312,16 @@
       main { padding: 0.7rem 0.7rem 2.5rem; }
       form.bar { gap: 0.4rem; }
       form.bar label, form.bar input { width: 100%; }
-      table.live-standings { display: none; }
-      .mobile-standings { display: flex; flex-direction: column; gap: 0.6rem; }
       table.live thead th { top: 48px; }
+      .league-cols {
+        grid-template-columns: 2.4rem minmax(0, 1.5fr) 1.8rem 3rem 2.2rem 2.5rem 0.85rem;
+        padding: 0.2rem 0.55rem 0.35rem; font-size: 0.68rem;
+      }
+      .lf-row {
+        grid-template-columns: 2.4rem minmax(0, 1.5fr) 1.8rem 3rem 2.2rem 2.5rem 0.85rem;
+      }
+      .lf-card { padding: 0.5rem 0.55rem 0.55rem; border-radius: 14px; }
+      .lf-mgr .team { font-size: 0.86rem; }
     }
   </style>
 </head>
@@ -269,6 +407,38 @@
     }
     function placeDeltaHtml(team) {
       return rankArrow(team.liveRank, team.lastRank);
+    }
+    function placeMove(team) {
+      const live = Number(team.liveRank), last = Number(team.lastRank);
+      if (!live || !last) return { dir: "flat", delta: 0 };
+      const d = last - live;
+      if (d > 0) return { dir: "rise", delta: d };
+      if (d < 0) return { dir: "drop", delta: d };
+      return { dir: "flat", delta: 0 };
+    }
+    function rankPillHtml(team) {
+      const move = placeMove(team);
+      const arrow = move.dir === "rise" ? "↑" : (move.dir === "drop" ? "↓" : "·");
+      const deltaTxt = move.dir === "flat" ? "" : ((move.delta > 0 ? "+" : "") + move.delta);
+      return "<div class='lf-pos'>" +
+        "<div class='rank-pill " + move.dir + "'><span class='arr'>" + arrow + "</span><span>" + fmt(team.liveRank) + "</span></div>" +
+        "<div class='rank-delta " + move.dir + "'>" + deltaTxt + "</div></div>";
+    }
+    function captainPair(team) {
+      const players = team.players || [];
+      const cap = players.find((p) => p.captain);
+      const vc = players.find((p) => p.viceCaptain);
+      return {
+        captain: (cap && (cap.webName || cap.name)) || "",
+        vice: (vc && (vc.webName || vc.name)) || ""
+      };
+    }
+    function playedCount(team) {
+      const starters = (team.players || []).filter((p) => !p.onBench);
+      const total = starters.length || 11;
+      const rem = Number(team.playersRemaining);
+      if (!Number.isFinite(rem)) return null;
+      return { played: Math.max(0, total - rem), total: total };
     }
 
     function fmtMoney(n) { return n == null ? "—" : "£" + Number(n).toFixed(1) + "m"; }
@@ -672,51 +842,35 @@
 
     function renderTable() {
       const lg = state.league;
-      const wrap = el("<section class='card'></section>");
-      const bar = el("<div class='toolbar'></div>");
-      bar.appendChild(el("<div><strong>" + escapeHtml(lg.leagueName || ("League " + lg.leagueId)) +
-        "</strong> <span class='muted'>· " + (lg.shown || 0) + (lg.entryCount ? ("/" + lg.entryCount) : "") + " teams</span></div>"));
-      const controls = el("<div></div>");
+      const wrap = el("<section class='card league-board'></section>");
+
+      const bar = el("<div class='league-toolbar'></div>");
+      const left = el("<div><strong>" + escapeHtml(lg.leagueName || ("League " + lg.leagueId)) +
+        "</strong> <span class='muted'>· " + (lg.shown || 0) + (lg.entryCount ? ("/" + lg.entryCount) : "") + " teams</span></div>");
+      const controls = el("<div style='display:flex;gap:0.35rem;flex-wrap:wrap;align-items:center'></div>");
       const auto = el("<button type='button'>Autosubs " + (state.autosubs ? "On" : "Off") + "</button>");
+      auto.classList.toggle("active", !!state.autosubs);
       auto.onclick = () => { state.autosubs = !state.autosubs; if (lg) loadLeague(lg.leagueId); else if (state.entryId) loadEntry(state.entryId); };
-      const dens = el("<button type='button'>" + (state.detailed ? "Detailed" : "Compact") + "</button>");
-      dens.onclick = () => { state.detailed = !state.detailed; render(); };
+      const densCompact = el("<button type='button'>Compact View</button>");
+      const densDetail = el("<button type='button'>Detailed View</button>");
+      densCompact.classList.toggle("active", !state.detailed);
+      densDetail.classList.toggle("active", !!state.detailed);
+      densCompact.onclick = () => { state.detailed = false; render(); };
+      densDetail.onclick = () => { state.detailed = true; render(); };
       controls.appendChild(auto);
-      controls.appendChild(dens);
+      controls.appendChild(densCompact);
+      controls.appendChild(densDetail);
+      bar.appendChild(left);
       bar.appendChild(controls);
       wrap.appendChild(bar);
+
       if (lg.capNote) wrap.appendChild(el("<p class='note'>" + escapeHtml(lg.capNote) + "</p>"));
-      if (!lg.live) wrap.appendChild(el("<p class='muted'>GW not started yet — showing official FPL totals (live columns will move after kickoff).</p>"));
+      if (!lg.live) wrap.appendChild(el("<p class='muted' style='text-align:center'>GW not started yet — showing official FPL totals (live columns will move after kickoff).</p>"));
 
-      const cols = [
-        ["liveRank", "Live rank"],
-        ["officialRank", "Official rank"],
-        ["managerName", "Manager / team"],
-        ["liveTotal", "Overall"],
-        ["gwNet", "GW"],
-        ["gwGross", "GW gross", true],
-        ["playersRemaining", "Remaining"],
-        ["liveOverallRankEstimate", "Live overall"],
-        ["overallRank", "Overall rank", true],
-        ["freeTransfers", "FT", true],
-        ["teamValue", "Value", true],
-        ["activeChip", "Chip", true]
-      ].filter((c) => state.detailed || !c[2]);
+      const title = (lg.leagueName || ("League " + lg.leagueId)) + " — Live Gameweek " + fmt(lg.gameweek || state.gameweek) + " Table";
+      wrap.appendChild(el("<div class='league-title'>" + escapeHtml(title) + "</div>"));
+      wrap.appendChild(el("<div class='league-cols'><span>Pos</span><span class='c-mgr'>Manager</span><span>Yet</span><span>(C)</span><span>GW</span><span>Total</span><span></span></div>"));
 
-      const table = el("<table class='live live-standings'><thead><tr></tr></thead><tbody></tbody></table>");
-      const trh = table.querySelector("thead tr");
-      cols.forEach((c) => {
-        const th = document.createElement("th");
-        th.textContent = c[1] + (state.sort.key === c[0] ? (state.sort.dir === 1 ? " ↑" : " ↓") : "");
-        if (c[0] === "managerName") th.className = "name";
-        th.onclick = () => {
-          if (state.sort.key === c[0]) state.sort.dir *= -1;
-          else { state.sort.key = c[0]; state.sort.dir = c[0] === "managerName" ? 1 : -1; }
-          render();
-        };
-        trh.appendChild(th);
-      });
-      const tbody = table.querySelector("tbody");
       const rows = (lg.teams || []).slice().sort((a, b) => {
         const k = state.sort.key;
         const av = a[k], bv = b[k];
@@ -726,38 +880,93 @@
         if (typeof av === "string") return av.localeCompare(bv) * state.sort.dir;
         return (av - bv) * (k === "liveRank" || k === "officialRank" || k === "overallRank" || k === "liveOverallRankEstimate" ? (state.sort.dir === 1 ? 1 : -1) : state.sort.dir);
       });
-      rows.forEach((team) => {
-        const tr = document.createElement("tr");
-        if (state.picks && state.picks.entryId === team.entryId) tr.classList.add("selected");
-        cols.forEach((c) => {
-          const td = document.createElement("td");
-          let v = team[c[0]];
-          if (c[0] === "managerName") {
-            td.className = "name";
-            td.innerHTML = "<div>" + escapeHtml(team.managerName) + "</div><div class='muted'>" + escapeHtml(team.entryName) + "</div>" + scorerLine(team);
-          } else if (c[0] === "liveRank") {
-            td.innerHTML = fmt(v) + " " + placeDeltaHtml(team);
-          } else if (c[0] === "teamValue") td.textContent = fmtMoney(v);
-          else if (c[0] === "gwNet") {
-            td.className = "gw-live";
-            const hit = Number(team.transferCost || 0);
-            td.innerHTML = fmt(v) + (hit > 0 ? ("<span class='hit' title='Transfer hit'>-" + hit + " hit</span>") : "");
+
+      const list = el("<div class='league-cards'></div>");
+      rows.forEach((team, idx) => {
+        const selected = !!(state.picks && state.picks.entryId === team.entryId);
+        const expanded = state.detailed && (selected || (!state.picks && idx === 0));
+        const caps = captainPair(team);
+        const hit = Number(team.transferCost || 0);
+        const pills = [];
+        if (team.activeChip) pills.push("<span class='mini-pill chip'>" + escapeHtml(team.activeChip) + "</span>");
+        if (team.overallRank != null) pills.push("<span class='mini-pill'><b>OR</b> " + fmtRank(team.overallRank) + "</span>");
+        const pillRow = pills.length ? ("<div class='lf-pills'>" + pills.join("") + "</div>") : "";
+
+        const card = el(
+          "<article class='lf-card" + (selected ? " selected" : "") + (expanded ? " expanded" : "") + "'>" +
+            "<div class='lf-row'>" +
+              rankPillHtml(team) +
+              "<div class='lf-mgr'>" +
+                "<div class='team'>" + escapeHtml(team.entryName || "") + "</div>" +
+                "<div class='name'>" + escapeHtml(team.managerName || "") + "</div>" +
+                pillRow +
+              "</div>" +
+              "<div class='lf-yet'>" + fmt(team.playersRemaining) + "</div>" +
+              "<div class='lf-cap'>" +
+                "<span class='c-name'>" + escapeHtml(caps.captain || "—") + "</span>" +
+                (caps.vice ? ("<span class='vc-name'>" + escapeHtml(caps.vice) + "</span>") : "") +
+              "</div>" +
+              "<div class='lf-gw'>" + fmt(team.gwNet) +
+                (hit > 0 ? ("<span class='hit'>-" + hit + " hit</span>") : "") +
+              "</div>" +
+              "<div class='lf-total'>" + fmt(team.liveTotal) + "</div>" +
+              "<div class='lf-chevron'>›</div>" +
+            "</div>" +
+            "<div class='lf-detail'></div>" +
+          "</article>"
+        );
+
+        const detail = card.querySelector(".lf-detail");
+        detail.innerHTML = buildLeagueDetail(team);
+        card.onclick = () => {
+          if (state.picks && state.picks.entryId === team.entryId && state.detailed) {
+            state.detailed = false;
+            render();
+            return;
           }
-          else if (c[0] === "liveOverallRankEstimate") {
-            td.innerHTML = v == null ? "—" : (fmtRank(v) + " est " + rankArrow(v, team.startOfGwOverallRank));
-          }
-          else if (c[0] === "overallRank") td.textContent = fmtRank(v);
-          else if (c[0] === "activeChip") { td.textContent = v || ""; td.className = "chip"; }
-          else if (c[0] === "freeTransfers") td.textContent = fmt(v);
-          else td.textContent = fmt(v);
-          tr.appendChild(td);
-        });
-        tr.onclick = () => loadPicks(team);
-        tbody.appendChild(tr);
+          state.detailed = true;
+          loadPicks(team);
+        };
+        list.appendChild(card);
       });
-      wrap.appendChild(table);
-      wrap.appendChild(renderMobileStandings(rows));
+      wrap.appendChild(list);
       return wrap;
+    }
+
+    function buildLeagueDetail(team) {
+      const meta = [];
+      if (team.freeTransfers != null) meta.push("<span class='mini-pill'><b>FT</b> " + fmt(team.freeTransfers) + "</span>");
+      if (team.teamValue != null) meta.push("<span class='mini-pill'><b>TV</b> " + fmtMoney(team.teamValue) + "</span>");
+      const played = playedCount(team);
+      if (played) meta.push("<span class='mini-pill'><b>PLAYED</b> " + played.played + "/" + played.total + "</span>");
+      if (team.liveOverallRankEstimate != null) {
+        meta.push("<span class='mini-pill'>Live OR " + fmtRank(team.liveOverallRankEstimate) + " est</span>");
+      }
+      if (Number(team.autosubsApplied) > 0) meta.push("<span class='mini-pill'>Autosubs " + team.autosubsApplied + "</span>");
+      const metaHtml = meta.length ? ("<div class='lf-meta'>" + meta.join("") + "</div>") : "";
+
+      const players = team.players || [];
+      if (!players.length) {
+        return metaHtml + scorerPills(team);
+      }
+      const xi = players.filter((p) => !p.onBench);
+      const bench = players.filter((p) => p.onBench);
+      function plCell(pl) {
+        const pts = Number(pl.contribution) || 0;
+        let cls = "zero";
+        if (pts >= 8) cls = "hi";
+        else if (pts >= 3) cls = "mid";
+        else if (pts > 0) cls = "lo";
+        const tag = pl.captain ? "C" : (pl.viceCaptain ? "VC" : "");
+        const sub = pl.autoSubIn ? " IN" : (pl.autoSubOut ? " OUT" : "");
+        return "<div class='lf-pl" + (pl.onBench ? " bench" : "") + "'>" +
+          "<div class='pn'>" + escapeHtml(pl.webName || pl.name || "") + "</div>" +
+          (tag || sub ? ("<div class='tag'>" + tag + sub + "</div>") : "") +
+          "<div class='pp " + cls + "'>" + pts + "</div></div>";
+      }
+      return metaHtml +
+        "<div class='lf-squad'>" + xi.map(plCell).join("") + "</div>" +
+        (bench.length ? ("<div class='muted' style='margin:0.35rem 0 0.15rem;font-size:0.7rem;color:#6b7280'>Bench</div><div class='lf-squad'>" + bench.map(plCell).join("") + "</div>") : "");
     }
 
     function scorerPills(team) {
@@ -769,43 +978,12 @@
       }
       const pills = scored.map((pl) => {
         const tag = pl.captain ? " C" : (pl.viceCaptain ? " VC" : "");
+        const pts = Number(pl.contribution) || 0;
+        const cls = pts >= 8 ? " hi" : (pts <= 1 ? " lo" : "");
         const pr = priceHtml(pl);
-        return "<span class='scorer-pill'>" + escapeHtml(pl.webName || pl.name) + tag + (pr ? (" " + pr) : "") + " <b>" + pl.contribution + "</b></span>";
+        return "<span class='scorer-pill" + cls + "'>" + escapeHtml(pl.webName || pl.name) + tag + (pr ? (" " + pr) : "") + " <b>" + pl.contribution + "</b></span>";
       });
       return "<div class='scorer-pills'>" + pills.join("") + "</div>";
-    }
-
-    function renderMobileStandings(rows) {
-      const list = el("<div class='mobile-standings'></div>");
-      rows.forEach((team) => {
-        const overall = team.liveOverallRankEstimate == null
-          ? "<div class='mgr-overall'>Live overall —</div>"
-          : "<div class='mgr-overall'>Live overall " + fmtRank(team.liveOverallRankEstimate) + " est " + rankArrow(team.liveOverallRankEstimate, team.startOfGwOverallRank) + "</div>";
-        const card = el(
-          "<article class='mgr-card'>" +
-            "<div class='mgr-card-head'>" +
-              "<div class='mgr-card-ranks'>" +
-                "<div class='mgr-rank'><span>Live rank</span><b>" + fmt(team.liveRank) + "</b> " + placeDeltaHtml(team) + "</div>" +
-                "<div class='mgr-rank'><span>Official</span><b>" + fmt(team.officialRank) + "</b></div>" +
-              "</div>" +
-              "<div class='mgr-scores'>" +
-                "<div class='mgr-live-total'><span>Overall</span><b>" + fmt(team.liveTotal) + "</b></div>" +
-                "<div class='mgr-gw'><span>GW</span><b>" + fmt(team.gwNet) + "</b>" +
-                  (Number(team.transferCost || 0) > 0 ? ("<span class='hit'>-" + Number(team.transferCost) + " hit</span>") : "") +
-                "</div>" +
-              "</div>" +
-            "</div>" +
-            "<div class='mgr-identity'><strong>" + escapeHtml(team.managerName) + "</strong>" +
-              "<div class='team muted'>" + escapeHtml(team.entryName) + "</div></div>" +
-            overall +
-            scorerPills(team) +
-          "</article>"
-        );
-        if (state.picks && state.picks.entryId === team.entryId) card.classList.add("selected");
-        card.onclick = () => loadPicks(team);
-        list.appendChild(card);
-      });
-      return list;
     }
 
     function renderPicks() {
