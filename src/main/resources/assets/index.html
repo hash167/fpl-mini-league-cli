@@ -169,6 +169,7 @@
     /* LiveFPL-style mini-league board — light */
     .league-board {
       background: transparent; border: none; padding: 0; margin: 0.75rem 0;
+      width: 100%; min-width: 0; max-width: none;
     }
     .league-toolbar {
       display: flex; flex-wrap: wrap; gap: 0.45rem; align-items: center;
@@ -177,6 +178,7 @@
       border: 1px solid var(--line);
       border-radius: 14px; padding: 0.55rem 0.7rem;
       box-shadow: var(--shadow);
+      width: 100%; min-width: 0; box-sizing: border-box;
     }
     .league-toolbar .muted { color: var(--card-muted); }
     .league-toolbar button {
@@ -196,16 +198,18 @@
       gap: 0.25rem; align-items: end;
       padding: 0.25rem 0.75rem 0.4rem;
       color: var(--muted); font-size: 0.72rem; text-transform: none; font-weight: 600;
+      width: 100%; min-width: 0; box-sizing: border-box;
     }
     .league-cols span { text-align: center; }
     .league-cols .c-mgr { text-align: left; padding-left: 0.15rem; }
-    .league-cards { display: flex; flex-direction: column; gap: 0.55rem; }
+    .league-cards { display: flex; flex-direction: column; gap: 0.55rem; width: 100%; min-width: 0; }
     .lf-card {
       background: var(--card); color: var(--card-text);
       border-radius: 14px; padding: 0.55rem 0.65rem 0.6rem;
       box-shadow: var(--shadow);
       cursor: pointer; border: 1px solid var(--line);
       transition: box-shadow 0.15s ease, border-color 0.15s ease;
+      width: 100%; min-width: 0; max-width: 100%; box-sizing: border-box; overflow: hidden;
     }
     .lf-card:hover { box-shadow: var(--shadow-lg); border-color: #cbd5e1; }
     .lf-card.selected { border-color: #6ee7b7; box-shadow: 0 0 0 2px rgba(16, 185, 129, 0.25), var(--shadow); }
@@ -213,7 +217,9 @@
       display: grid;
       grid-template-columns: 2.6rem minmax(0, 1.6fr) 2.1rem 3.4rem 2.4rem 2.8rem 1rem;
       gap: 0.25rem; align-items: center;
+      width: 100%; min-width: 0;
     }
+    .lf-row > * { min-width: 0; }
     .lf-pos { display: flex; flex-direction: column; align-items: center; gap: 0.12rem; }
     .rank-pill {
       width: 2.15rem; height: 2.15rem; border-radius: 999px;
@@ -314,9 +320,6 @@
     table.live-standings { display: none; }
     .mobile-standings { display: none; }
 
-    @media (min-width: 900px) {
-      .league-board { max-width: 720px; margin-left: auto; margin-right: auto; }
-    }
     .price { color: var(--chip); font-variant-numeric: tabular-nums; }
     .price.up { color: var(--accent); }
     .price.down { color: var(--danger); }
