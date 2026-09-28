@@ -33,7 +33,7 @@
       --shadow-lg: 0 8px 24px rgba(15, 23, 42, 0.08);
     }
     * { box-sizing: border-box; }
-    html, body { margin: 0; padding: 0; background: var(--bg); color: var(--text); }
+    html, body { margin: 0; padding: 0; background: var(--bg); color: var(--text); overflow-x: hidden; max-width: 100%; }
     body { font: 14px/1.4 "IBM Plex Sans", "Segoe UI", system-ui, sans-serif; }
     header {
       position: sticky; top: 0; z-index: 20;
@@ -74,7 +74,7 @@
     .toast.hint { background: #f8fafc; border-color: var(--line); }
     .toast.hint .kicker { color: var(--card-muted); }
     @keyframes toastIn { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: none; } }
-    main { padding: 0.9rem 1rem 3rem; max-width: 1400px; margin: 0 auto; }
+    main { padding: 0.9rem 1rem 3rem; max-width: 1400px; margin: 0 auto; width: 100%; min-width: 0; box-sizing: border-box; overflow-x: hidden; }
     form.bar { display: flex; gap: 0.45rem; flex-wrap: wrap; align-items: end; }
     label { display: flex; flex-direction: column; gap: 0.2rem; font-size: 0.75rem; color: var(--muted); }
     input, button, select {
@@ -169,7 +169,8 @@
     /* LiveFPL-style mini-league board — light */
     .league-board {
       background: transparent; border: none; padding: 0; margin: 0.75rem 0;
-      width: 100%; min-width: 0; max-width: none;
+      width: 100%; min-width: 0; max-width: 100%;
+      overflow-x: hidden; box-sizing: border-box;
     }
     .league-toolbar {
       display: flex; flex-wrap: wrap; gap: 0.45rem; align-items: center;
@@ -191,6 +192,8 @@
     .league-title {
       text-align: center; color: var(--text); font-weight: 650;
       margin: 0.85rem 0 0.45rem; font-size: 0.98rem; letter-spacing: 0.01em;
+      max-width: 100%; min-width: 0; padding: 0 0.35rem; box-sizing: border-box;
+      overflow-wrap: anywhere; word-break: break-word;
     }
     .league-cols {
       display: grid;
@@ -361,19 +364,52 @@
     }
     @media (max-width: 720px) {
       header { padding: 0.6rem 0.7rem; }
-      main { padding: 0.7rem 0.7rem 2.5rem; }
+      main { padding: 0.7rem 0.7rem 2.5rem; overflow-x: hidden; }
       form.bar { gap: 0.4rem; }
       form.bar label, form.bar input { width: 100%; }
       table.live thead th { top: 48px; }
       .league-cols {
-        grid-template-columns: 2.4rem minmax(0, 1.5fr) 1.8rem 3rem 2.2rem 2.5rem 0.85rem;
-        padding: 0.2rem 0.55rem 0.35rem; font-size: 0.68rem;
+        grid-template-columns: 2.2rem minmax(0, 1fr) 2rem 2.4rem;
+        grid-template-areas: "pos mgr gw total";
+        padding: 0.2rem 0.45rem 0.35rem; font-size: 0.65rem; gap: 0.2rem;
       }
+      .league-cols .c-pos { grid-area: pos; }
+      .league-cols .c-mgr { grid-area: mgr; }
+      .league-cols .c-gw { grid-area: gw; }
+      .league-cols .c-total { grid-area: total; }
+      .league-cols .c-yet,
+      .league-cols .c-cap,
+      .league-cols .c-chev { display: none; }
       .lf-row {
-        grid-template-columns: 2.4rem minmax(0, 1.5fr) 1.8rem 3rem 2.2rem 2.5rem 0.85rem;
+        grid-template-columns: 2.2rem minmax(0, 1fr) 2rem 2.4rem;
+        grid-template-areas:
+          "pos mgr gw total"
+          "pos cap gw total";
+        gap: 0.15rem 0.2rem; align-items: center;
       }
-      .lf-card { padding: 0.5rem 0.55rem 0.55rem; border-radius: 14px; }
-      .lf-mgr .team { font-size: 0.86rem; }
+      .lf-pos { grid-area: pos; }
+      .lf-mgr { grid-area: mgr; }
+      .lf-cap {
+        grid-area: cap; text-align: left; padding-left: 0.05rem;
+      }
+      .lf-yet, .lf-chevron { display: none; }
+      .lf-gw { grid-area: gw; }
+      .lf-total { grid-area: total; }
+      .lf-card { padding: 0.45rem 0.5rem 0.5rem; border-radius: 14px; }
+      .lf-mgr .team { font-size: 0.84rem; }
+      .lf-mgr .name { font-size: 0.72rem; }
+      .lf-cap .c-name { font-size: 0.7rem; font-weight: 700; }
+      .lf-cap .vc-name { font-size: 0.6rem; }
+      .lf-yet, .lf-gw, .lf-total { font-size: 0.88rem; }
+      .rank-pill { width: 1.95rem; height: 1.95rem; font-size: 0.72rem; }
+      .league-title { font-size: 0.9rem; margin: 0.7rem 0 0.35rem; }
+    }
+    @media (max-width: 380px) {
+      .league-cols, .lf-row {
+        grid-template-columns: 2rem minmax(0, 1fr) 1.85rem 2.2rem;
+      }
+      .lf-card { padding: 0.4rem 0.4rem 0.45rem; }
+      .mini-pill { font-size: 0.6rem; padding: 0.1rem 0.32rem; }
     }
   </style>
 </head>
@@ -921,7 +957,7 @@
 
       const title = (lg.leagueName || ("League " + lg.leagueId)) + " — Live Gameweek " + fmt(lg.gameweek || state.gameweek) + " Table";
       wrap.appendChild(el("<div class='league-title'>" + escapeHtml(title) + "</div>"));
-      wrap.appendChild(el("<div class='league-cols'><span>Pos</span><span class='c-mgr'>Manager</span><span>Yet</span><span>(C)</span><span>GW</span><span>Total</span><span></span></div>"));
+      wrap.appendChild(el("<div class='league-cols'><span class='c-pos'>Pos</span><span class='c-mgr'>Manager</span><span class='c-yet'>Yet</span><span class='c-cap'>(C)</span><span class='c-gw'>GW</span><span class='c-total'>Total</span><span class='c-chev'></span></div>"));
 
       const rows = (lg.teams || []).slice().sort((a, b) => {
         const k = state.sort.key;
