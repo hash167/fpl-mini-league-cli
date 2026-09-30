@@ -101,6 +101,7 @@
       border: 1px solid var(--line); border-radius: 14px;
       padding: 0.8rem 0.9rem; margin: 0.75rem 0;
       box-shadow: var(--shadow);
+      width: 100%; min-width: 0; max-width: 100%; box-sizing: border-box;
     }
     .card .muted { color: var(--card-muted); }
     .card strong { color: var(--card-ink); }
@@ -151,10 +152,14 @@
     .card .tag { color: var(--card-muted); }
     .card .scorers { color: var(--card-muted); }
     .card .scorers b { color: var(--accent); }
-    .split { display: grid; grid-template-columns: 1fr; gap: 0.8rem; }
+    .split { display: grid; grid-template-columns: minmax(0, 1fr); gap: 0.8rem; width: 100%; min-width: 0; max-width: 100%; }
+    .split > * { min-width: 0; max-width: 100%; }
     @media (min-width: 1100px) { .split.has-detail { grid-template-columns: minmax(0, 1fr) 360px; } }
     .players th, .players td { text-align: left; }
     .players td.num, .players th.num { text-align: right; }
+    /* Keep wide squad tables from expanding the league board (clips GW/Total on phones). */
+    .picks-wrap { width: 100%; min-width: 0; max-width: 100%; overflow-x: auto; -webkit-overflow-scrolling: touch; }
+    table.live.players { width: 100%; min-width: 0; }
     .tag { font-size: 0.7rem; color: var(--muted); }
     .in { color: var(--accent); }
     .out { color: var(--danger); }
@@ -410,6 +415,17 @@
       .lf-gw .hit { text-align: right; }
       .rank-pill { width: 1.95rem; height: 1.95rem; font-size: 0.72rem; }
       .league-title { font-size: 0.9rem; margin: 0.7rem 0 0.35rem; }
+
+      /* Squad detail: hide secondary cols so Pts stay on-screen; table scrolls if needed. */
+      .picks-wrap { margin: 0 -0.15rem; padding: 0 0.15rem; }
+      table.live.players { font-size: 0.82rem; }
+      table.live.players th, table.live.players td { padding: 0.3rem 0.28rem; }
+      table.live.players th:nth-child(3), table.live.players td:nth-child(3), /* Price */
+      table.live.players th:nth-child(5), table.live.players td:nth-child(5), /* Raw */
+      table.live.players th:nth-child(6), table.live.players td:nth-child(6), /* Bonus */
+      table.live.players th:nth-child(8), table.live.players td:nth-child(8)  /* EO */ {
+        display: none;
+      }
     }
     @media (max-width: 360px) {
       .league-cols, .lf-row {
@@ -417,6 +433,9 @@
       }
       .lf-card { padding: 0.4rem 0.4rem 0.45rem; }
       .mini-pill { font-size: 0.6rem; padding: 0.1rem 0.32rem; }
+      table.live.players th:nth-child(4), table.live.players td:nth-child(4) { /* Min */
+        display: none;
+      }
     }
   </style>
 </head>
@@ -767,7 +786,19 @@
         state.leaguesStale = !!leagues.stale;
         if (leagues.stale && leagues.error) state.leaguesError = leagues.error;
         state.gameweek = entry.gameweek;
-        state.picks = { players: entry.players, managerName: entry.managerName, teamName: entry.teamName, livePoints: entry.gwGross, gameweek: entry.gameweek };
+        state.picks = {
+          players: entry.players,
+          managerName: entry.managerName,
+          teamName: entry.teamName,
+          entryName: entry.teamName,
+          livePoints: entry.gwGross,
+          gwNet: entry.gwNet,
+          gwGross: entry.gwGross,
+          transferCost: entry.transferCost,
+          liveTotal: entry.liveTotal,
+          activeChip: entry.activeChip,
+          gameweek: entry.gameweek
+        };
         setPills(entry.gameweek, entry.live);
         persistView();
         render();
@@ -1093,6 +1124,7 @@
       box.appendChild(el("<p class='muted'>GW net " + fmt(p.gwNet) + " · gross " + fmt(p.gwGross) +
         " · hit " + fmt(p.transferCost) + " · live total " + fmt(p.liveTotal) +
         (p.activeChip ? (" · " + p.activeChip) : "") + "</p>"));
+      const wrap = el("<div class='picks-wrap'></div>");
       const table = el("<table class='live players'><thead><tr>" +
         "<th></th><th>Player</th><th class='num'>Price</th><th class='num'>Min</th><th class='num'>Raw</th><th class='num'>Bonus</th><th class='num'>×</th><th class='num'>EO</th><th class='num'>Pts</th>" +
         "</tr></thead><tbody></tbody></table>");
@@ -1108,7 +1140,8 @@
           "</td><td class='num'>" + fmtEo(pl.eo) + "</td><td class='num'>" + pl.contribution + "</td></tr>");
         tbody.appendChild(tr);
       });
-      box.appendChild(table);
+      wrap.appendChild(table);
+      box.appendChild(wrap);
       return box;
     }
 
