@@ -25,7 +25,9 @@ class UiAssetsContractTest {
         val html = Files.readString(
             Paths.get("src/main/resources/assets/index.html")
         )
-        assertTrue(html.contains("--bg: #0e111d"), "page background must be LiveFPL navy")
+        assertTrue(html.contains("--bg: #f4f6fb"), "page background must be light soft gray")
+        assertTrue(html.contains("id=\"gwStats\""), "GW Stats card must exist")
+        assertTrue(html.contains("/live/gw-stats/top10k"), "GW Stats must load top10k endpoint")
         assertTrue(html.contains("--card: #ffffff"), "cards must use white LiveFPL surface")
         assertTrue(html.contains("background: var(--card); color: var(--card-text);"), "generic .card must use white LiveFPL card colors")
         assertTrue(html.contains(".card .muted { color: var(--card-muted); }"), "muted text on cards must use card-muted")

@@ -437,6 +437,28 @@
         display: none;
       }
     }
+    /* GW Stats: top-10k transfers in/out (light, mobile-safe) */
+    #gwStats .gws-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 300px), 1fr)); gap: 0.8rem; margin-top: 0.6rem; min-width: 0; }
+    #gwStats .gws-col { min-width: 0; border: 1px solid var(--line); border-radius: 12px; padding: 0.5rem 0.6rem; background: #ffffff; }
+    #gwStats h3 { margin: 0 0 0.35rem; font-size: 0.92rem; color: var(--card-ink); }
+    #gwStats h3 .dir-in { color: var(--accent); }
+    #gwStats h3 .dir-out { color: var(--danger); }
+    #gwStats ol { list-style: none; margin: 0; padding: 0; }
+    #gwStats li { display: grid; grid-template-columns: 1.4rem minmax(0, 1fr) auto; gap: 0.4rem; align-items: center; padding: 0.38rem 0; border-bottom: 1px solid var(--line); }
+    #gwStats li:last-child { border-bottom: 0; }
+    #gwStats .rk { color: var(--card-muted); font-variant-numeric: tabular-nums; font-size: 0.8rem; }
+    #gwStats .pl { min-width: 0; overflow-wrap: anywhere; }
+    #gwStats .pl b { color: var(--card-ink); font-weight: 650; }
+    #gwStats .pl small { display: block; color: var(--card-muted); font-size: 0.74rem; }
+    #gwStats .ct { text-align: right; font-variant-numeric: tabular-nums; white-space: nowrap; }
+    #gwStats .ct b { color: var(--card-ink); }
+    #gwStats .ct small { display: block; color: var(--card-muted); font-size: 0.72rem; }
+    #gwStats .bar { height: 4px; border-radius: 4px; background: #d1fae5; margin-top: 3px; overflow: hidden; }
+    #gwStats .bar i { display: block; height: 100%; background: var(--accent-bright); }
+    #gwStats .out .bar { background: #ffe4e6; }
+    #gwStats .out .bar i { background: #fb7185; }
+    #gwStats .mine { display: inline-block; margin-left: 0.3rem; padding: 0 0.35rem; border-radius: 999px; background: #ecfdf5; color: var(--accent); border: 1px solid #a7f3d0; font-size: 0.68rem; font-weight: 650; vertical-align: 1px; }
+    #gwStats .gws-note { margin-top: 0.6rem; font-size: 0.78rem; color: var(--card-muted); background: #f8fafc; border-radius: 10px; padding: 0.45rem 0.6rem; }
   </style>
 </head>
 <body>
@@ -471,6 +493,15 @@
         <button type="button" data-filter="price">Price rise</button>
       </div>
       <div id="boardMount"></div>
+    </section>
+    <section class="card" id="gwStats">
+      <div class="board-head">
+        <div>
+          <strong>GW Stats</strong>
+          <div class="muted" id="gwStatsNote">Loading top 10k transfers…</div>
+        </div>
+      </div>
+      <div id="gwStatsMount"></div>
     </section>
   </main>
   <script>
@@ -1343,6 +1374,41 @@
         navigator.serviceWorker.register("/sw.js").catch(function () {});
       }
     })();
+    const MY_ENTRY = 5498977;
+    function timeAgo(iso) {
+      const t = Date.parse(iso); if (!t) return "—";
+      const m = Math.max(0, Math.round((Date.now() - t) / 60000));
+      if (m < 60) return m + "m ago";
+      const h = Math.round(m / 60); if (h < 48) return h + "h ago";
+      return Math.round(h / 24) + "d ago";
+    }
+    function gwsList(rows, dir, mine) {
+      const max = Math.max(1, ...rows.map((r) => r.count));
+      const items = rows.map((r, i) => {
+        const overall = dir === "in" ? r.overall_transfers_in : r.overall_transfers_out;
+        const tag = mine.has(r.element) ? "<span class='mine' title='In your squad'>★ yours</span>" : "";
+        return "<li><span class='rk'>" + (i + 1) + "</span><span class='pl'><b>" + escapeHtml(r.web_name) + "</b>" + tag +
+          "<small>" + escapeHtml(r.team) + " · " + escapeHtml(r.position) + " · overall " + Number(overall || 0).toLocaleString() + "</small>" +
+          "<div class='bar'><i style='width:" + Math.round(100 * r.count / max) + "%'></i></div></span>" +
+          "<span class='ct'><b>" + Number(r.count).toLocaleString() + "</b><small>" + Number(r.pct).toFixed(1) + "%</small></span></li>";
+      }).join("");
+      return "<div class='gws-col " + dir + "'><h3>Top 10k transfers <span class='dir-" + dir + "'>" + dir + "</span></h3><ol>" + (items || "<li class='muted'>No transfers yet</li>") + "</ol></div>";
+    }
+    async function loadGwStats() {
+      const note = document.getElementById("gwStatsNote");
+      const mount = document.getElementById("gwStatsMount");
+      try {
+        const d = await api("/live/gw-stats/top10k");
+        const mine = new Set(d.my_squad || []);
+        note.textContent = "GW" + d.gw + " · top " + Number(d.sample_size).toLocaleString() + " managers (net moves) · updated " + timeAgo(d.generated_at) +
+          (d.failed_count ? " · " + d.failed_count + " fetch failures" : "");
+        mount.innerHTML = "<div class='gws-grid'>" + gwsList(d.transfers_in || [], "in", mine) + gwsList(d.transfers_out || [], "out", mine) + "</div>" +
+          "<div class='gws-note'>% = share of the top 10k sample. Overall = all managers this GW (FPL bootstrap). Wildcard and Free Hit moves aren’t visible until after the deadline. ★ = in squad of entry " + MY_ENTRY + ".</div>";
+      } catch (err) {
+        note.textContent = "Top 10k transfer stats not available yet.";
+      }
+    }
+    loadGwStats();
   </script>
 </body>
 </html>

@@ -37,6 +37,8 @@ class FplWebApplication : Application<FplWebConfiguration>() {
         environment.jersey().register(OverallResource(service))
         environment.jersey().register(LiveBoardResource(service))
         environment.jersey().register(LivePricesResource(service))
+        val dataDir = java.nio.file.Paths.get(snapshotPath).toAbsolutePath().parent?.toString() ?: "data"
+        environment.jersey().register(GwStatsResource(dataDir, System.getenv("FPL_INGEST_TOKEN")))
         environment.jersey().register(UiResource())
     }
 
