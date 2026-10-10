@@ -1400,7 +1400,7 @@
       try {
         const d = await api("/live/gw-stats/top10k");
         const mine = new Set(d.my_squad || []);
-        note.textContent = "GW" + d.gw + " · top " + Number(d.sample_size).toLocaleString() + " managers (net moves) · updated " + timeAgo(d.generated_at) +
+        note.textContent = "GW" + d.gw + (d.mode === "post_deadline" ? " (locked; GW" + d.next_gw + " moves hidden by FPL until its deadline)" : " upcoming") + " · top " + Number(d.sample_size).toLocaleString() + " managers (net moves) · updated " + timeAgo(d.generated_at) +
           (d.failed_count ? " · " + d.failed_count + " fetch failures" : "");
         mount.innerHTML = "<div class='gws-grid'>" + gwsList(d.transfers_in || [], "in", mine) + gwsList(d.transfers_out || [], "out", mine) + "</div>" +
           "<div class='gws-note'>% = share of the top 10k sample. Overall = all managers this GW (FPL bootstrap). Wildcard and Free Hit moves aren’t visible until after the deadline. ★ = in squad of entry " + MY_ENTRY + ".</div>";
