@@ -61,8 +61,14 @@ def main():
     ids = list(dict.fromkeys(ids))[: PAGES * 50]
     print(f"GW{gw}: {len(ids)} entries from standings in {time.time()-t0:.0f}s", flush=True)
 
-    ins, outs = Counter(), Counter()
-    failed = movers = 0
+    # FPL's public /transfers/ endpoint hides pending moves until the deadline passes, so we
+    # count both the upcoming GW and the current (just-locked) GW and fall back to the latter
+    # when nobody's upcoming moves are visible yet.
+    targets = [g for g in (gw, cur) if g]
+    ins = {g: Counter() for g in targets}
+    outs = {g: Counter() for g in targets}
+    movers = {g: 0 for g in targets}
+    failed = 0
 
     def fetch(eid):
         try:
@@ -75,22 +81,25 @@ def main():
             if tr is None:
                 failed += 1
                 continue
-            net = Counter()
-            for t in tr:
-                if t.get("event") == gw:
-                    net[t["element_in"]] += 1
-                    net[t["element_out"]] -= 1
-            if any(net.values()):
-                movers += 1
-            for el, v in net.items():
-                if v > 0:
-                    ins[el] += 1
-                elif v < 0:
-                    outs[el] += 1
+            for g in targets:
+                net = Counter()
+                for t in tr:
+                    if t.get("event") == g:
+                        net[t["element_in"]] += 1
+                        net[t["element_out"]] -= 1
+                if any(net.values()):
+                    movers[g] += 1
+                for el, v in net.items():
+                    if v > 0:
+                        ins[g][el] += 1
+                    elif v < 0:
+                        outs[g][el] += 1
             if i % 1000 == 0:
                 print(f"  {i}/{len(ids)} fetched, failed={failed}, {time.time()-t0:.0f}s", flush=True)
 
     sample = len(ids) - failed
+    shown = gw if movers[gw] > 0 or not cur else cur
+    mode = "pre_deadline" if shown == gw else "post_deadline"
     my_squad = []
     try:
         if cur:
@@ -114,11 +123,12 @@ def main():
 
     payload = {
         "generated_at": datetime.now(timezone.utc).isoformat(timespec="seconds"),
-        "gw": gw, "deadline_time": nxt.get("deadline_time"),
+        "gw": shown, "mode": mode, "next_gw": gw, "next_deadline_time": nxt.get("deadline_time"),
+        "next_gw_visible_movers": movers[gw],
         "sample_size": sample, "requested": len(ids), "failed_count": failed,
-        "managers_with_transfers": movers, "runtime_seconds": round(time.time() - t0, 1),
+        "managers_with_transfers": movers[shown], "runtime_seconds": round(time.time() - t0, 1),
         "my_entry": MY_ENTRY, "my_squad": my_squad,
-        "transfers_in": rows(ins), "transfers_out": rows(outs),
+        "transfers_in": rows(ins[shown]), "transfers_out": rows(outs[shown]),
     }
     body = json.dumps(payload).encode()
     if os.environ.get("OUT_FILE"):
@@ -130,7 +140,7 @@ def main():
             "Content-Type": "application/json", "X-Ingest-Token": os.environ.get("FPL_INGEST_TOKEN", "")})
         with urllib.request.urlopen(req, timeout=30) as r:
             print("posted:", r.status, r.read().decode())
-    print(f"done GW{gw} sample={sample} failed={failed} runtime={payload['runtime_seconds']}s")
+    print(f"done GW{shown} ({mode}) sample={sample} failed={failed} runtime={payload['runtime_seconds']}s")
     print("top in:", [(r["web_name"], r["count"]) for r in payload["transfers_in"][:3]])
     print("top out:", [(r["web_name"], r["count"]) for r in payload["transfers_out"][:3]])
     return 0 if sample > 0.9 * len(ids) else 1
