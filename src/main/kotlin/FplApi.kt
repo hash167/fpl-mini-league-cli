@@ -314,3 +314,14 @@ fun historyFromEntry(entry: JsonObject, gameweek: Int): EntryEventHistory =
         eventTransfers = 0,
         eventTransfersCost = 0
     )
+
+/**
+ * The picks endpoint's entry_history.overall_rank is only refreshed at FPL's periodic rank
+ * recalculation and lags summary_overall_rank during a live gameweek. For the entry's current
+ * gameweek prefer the summary rank from entry/{id}/; finished gameweeks keep the history rank.
+ */
+fun resolveOverallRank(historyRank: Int?, profile: JsonObject, gameweek: Int): Int? {
+    val currentEvent = profile.int("current_event")
+    val summaryRank = profile.int("summary_overall_rank")
+    return if (currentEvent == gameweek && summaryRank != null) summaryRank else historyRank
+}

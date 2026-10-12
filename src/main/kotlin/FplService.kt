@@ -235,7 +235,7 @@ class FplService(
             liveTotal = squad.liveTotal,
             officialTotal = history.totalPoints,
             officialGwPoints = history.points,
-            overallRank = history.overallRank,
+            overallRank = resolveOverallRank(history.overallRank, profileJson, gameweek),
             overallRankLabel = "official",
             startOfGwOverallRank = startRank,
             teamValue = tenthsToMillions(history.value),
@@ -537,6 +537,11 @@ class FplService(
         } else {
             parseEntryEventPicks(raw)
         }
+        val profileJson = try {
+            api.entry(standing.entryId)
+        } catch (_: Exception) {
+            JsonObject(emptyMap())
+        }
         val snapshots = entrySeasonHistory(standing.entryId)
         val history = withPreviousTotal(event.history, snapshot.gameweek, snapshots)
         val startRank = startOfGwOverallRank(snapshots, snapshot.gameweek)
@@ -565,7 +570,7 @@ class FplService(
             gwGross = squad.gwGross,
             transferCost = history.eventTransfersCost,
             playersRemaining = squad.playersRemaining,
-            overallRank = history.overallRank,
+            overallRank = resolveOverallRank(history.overallRank, profileJson, snapshot.gameweek),
             overallRankLabel = "official",
             startOfGwOverallRank = startRank,
             freeTransfers = null,
