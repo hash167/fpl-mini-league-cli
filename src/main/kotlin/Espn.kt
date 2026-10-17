@@ -23,6 +23,8 @@ interface EspnSource {
     /** Scoreboard for a UTC calendar date, yyyyMMdd. */
     fun scoreboard(date: String): JsonObject?
     fun summary(eventId: String): JsonObject?
+    /** League standings (apis/v2/.../standings). */
+    fun standings(): JsonObject? = null
 }
 
 const val ESPN_BASE_URL = "https://site.api.espn.com/apis/site/v2/sports/soccer/eng.1"
@@ -44,15 +46,21 @@ class HttpEspnSource(
     @Volatile private var consecutiveFailures = 0
     @Volatile private var backoffUntil = 0L
 
+    override fun standings(): JsonObject? =
+        cached("standings", { 120_000L }) { get(baseUrl.replace("/apis/site/v2/", "/apis/v2/") + "/standings") }
+
     override fun scoreboard(date: String): JsonObject? =
-        cached("sb:$date", { 60_000L }) { get("$baseUrl/scoreboard?dates=$date") }
+        cached("sb:$date", { body ->
+            val states = body?.arr("events")?.mapNotNull { (it as? JsonObject)?.obj("status")?.obj("type")?.str("state") }.orEmpty()
+            if ("in" in states) 8_000L else 60_000L // live scores refresh every ~8s
+        }) { get("$baseUrl/scoreboard?dates=$date") }
 
     override fun summary(eventId: String): JsonObject? =
         cached("sum:$eventId", { body ->
             when (espnState(body?.obj("header")?.arr("competitions")?.firstOrNull() as? JsonObject)) {
                 "post" -> 6 * 60 * 60_000L
-                "pre" -> 5 * 60_000L
-                else -> 30_000L
+                "pre" -> 60_000L
+                else -> 5_000L // live: the SSE poller refreshes every ~7s
             }
         }) { get("$baseUrl/summary?event=$eventId") }
 
@@ -483,4 +491,71 @@ fun enrichWithEspn(
         homeScore = homeComp?.str("score")?.toIntOrNull(),
         awayScore = awayComp?.str("score")?.toIntOrNull()
     )
+}
+
+
+// ---------- GW scoreboard (homepage fixtures strip) ----------
+
+data class ScoreboardFixture(
+    val id: Int,
+    val homeScore: Int?,
+    val awayScore: Int?,
+    val clock: String,
+    val state: String,
+    val started: Boolean,
+    val finished: Boolean,
+    val minutes: Int,
+    val source: String
+)
+
+const val APP_BUILD = "1.33"
+
+data class ScoreboardResponse(
+    val gameweek: Int,
+    val live: Boolean,
+    val fixtures: List<ScoreboardFixture>,
+    val source: String,
+    val generatedAt: Long = System.currentTimeMillis(),
+    val build: String = APP_BUILD
+)
+
+/** FPL fixtures for a GW, with score and clock taken from the ESPN scoreboard when the match is mapped. */
+fun buildScoreboard(gameweek: Int, fixtures: List<JsonObject>, bootstrap: JsonObject, espn: EspnSource?): ScoreboardResponse {
+    val teams = bootstrap.arr("teams").mapNotNull { it as? JsonObject }.associateBy { it.int("id") ?: -1 }
+    val boards = mutableMapOf<String, JsonObject?>()
+    fun board(date: String): JsonObject? = boards.getOrPut(date) {
+        try { espn?.scoreboard(date) } catch (_: Exception) { null }
+    }
+    var anyEspn = false
+    val rows = fixtures.mapNotNull { f ->
+        val id = f.int("id") ?: return@mapNotNull null
+        val started = f.bool("started") == true
+        val finished = f.bool("finished") == true || f.bool("finished_provisional") == true
+        val minutes = f.int("minutes") ?: 0
+        val fplRow = ScoreboardFixture(
+            id, f.int("team_h_score"), f.int("team_a_score"),
+            matchStatus(started, f.bool("finished_provisional") == true, f.bool("finished") == true, minutes, null).label,
+            if (finished) "post" else if (started) "in" else "pre", started, finished, minutes, "FPL"
+        )
+        val ko = f.str("kickoff_time")?.let { runCatching { java.time.Instant.parse(it) }.getOrNull() }
+        if (espn == null || ko == null) return@mapNotNull fplRow
+        val home = teams[f.int("team_h")]?.str("name") ?: return@mapNotNull fplRow
+        val away = teams[f.int("team_a")]?.str("name") ?: return@mapNotNull fplRow
+        val sb = board(espnDateKey(ko)) ?: return@mapNotNull fplRow
+        val eventId = findEspnEvent(sb, home, away, f.str("kickoff_time")) ?: return@mapNotNull fplRow
+        val ev = sb.arr("events").mapNotNull { it as? JsonObject }.firstOrNull { it.str("id") == eventId } ?: return@mapNotNull fplRow
+        val comp = ev.arr("competitions").firstOrNull() as? JsonObject ?: return@mapNotNull fplRow
+        val type = ev.obj("status").obj("type")
+        val state = type.str("state") ?: return@mapNotNull fplRow
+        if (state == "pre") return@mapNotNull fplRow
+        fun score(side: String) = comp.arr("competitors").mapNotNull { it as? JsonObject }
+            .firstOrNull { it.str("homeAway") == side }?.str("score")?.toIntOrNull()
+        anyEspn = true
+        ScoreboardFixture(
+            id, score("home") ?: fplRow.homeScore, score("away") ?: fplRow.awayScore,
+            type.str("shortDetail")?.takeIf { it.isNotBlank() } ?: fplRow.clock,
+            state, true, state == "post" || finished, minutes, "ESPN"
+        )
+    }
+    return ScoreboardResponse(gameweek, rows.any { it.state == "in" }, rows, if (anyEspn) "ESPN" else "FPL")
 }

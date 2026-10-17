@@ -542,6 +542,30 @@
     .mc-form { font-size: 0.72rem; color: var(--accent); font-weight: 700; text-transform: none; letter-spacing: 0; }
     .mc-subhead { font-size: 0.68rem; text-transform: uppercase; letter-spacing: 0.05em; color: var(--card-muted); margin: 0.55rem 0 0.15rem; font-weight: 650; }
     .mc-pl.unused { opacity: 0.6; }
+    .fx-dot { margin-left: 0.3rem; }
+    .fx.flash { animation: fxFlash 1.6s ease-out; }
+    @keyframes fxFlash { 0% { background: #bbf7d0; } 100% { background: #f8fafc; } }
+    .mc-tabs { gap: 0.3rem; }
+    .mc-tabs button { flex: 1 1 auto; white-space: nowrap; font-size: 0.78rem; padding: 0.38rem 0.45rem; }
+    table.mc-lt { width: 100%; border-collapse: collapse; font-size: 0.84rem; font-variant-numeric: tabular-nums; table-layout: fixed; }
+    table.mc-lt th { font-size: 0.68rem; text-transform: uppercase; letter-spacing: 0.04em; color: var(--card-muted); font-weight: 650; text-align: right; padding: 0.3rem 0.25rem; border-bottom: 1px solid var(--line); }
+    table.mc-lt td { text-align: right; padding: 0.34rem 0.25rem; border-bottom: 1px solid var(--line); }
+    table.mc-lt th.pos, table.mc-lt td.pos { width: 2.6rem; text-align: left; white-space: nowrap; }
+    table.mc-lt th.tm, table.mc-lt td.tm { text-align: left; width: auto; }
+    table.mc-lt th:nth-child(3), table.mc-lt th:nth-child(4), table.mc-lt td:nth-child(3), table.mc-lt td:nth-child(4) { width: 2.4rem; }
+    table.mc-lt th:nth-child(5), table.mc-lt td:nth-child(5) { width: 2.6rem; }
+    table.mc-lt td.pts { font-weight: 750; color: var(--card-ink); }
+    table.mc-lt .tm-row { display: flex; align-items: center; gap: 0.35rem; min-width: 0; }
+    table.mc-lt .tm-row img { flex: 0 0 auto; }
+    table.mc-lt tr.in-match td { background: #ecfdf5; }
+    table.mc-lt tr.in-match td.pos { box-shadow: inset 3px 0 0 var(--accent); }
+    .mv { display: inline-block; width: 0.8rem; font-size: 0.6rem; margin-left: 0.2rem; }
+    .mv.up { color: var(--rank-up); } .mv.down { color: var(--rank-down); }
+    .lt-live { display: flex; align-items: center; gap: 0.25rem; font-size: 0.68rem; color: #047857; font-weight: 650; margin-top: 0.1rem; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    .lt-dot { width: 0.4rem; height: 0.4rem; border-radius: 50%; background: var(--accent-bright); flex: 0 0 auto; }
+    .mc-dot { display: inline-block; width: 0.5rem; height: 0.5rem; border-radius: 50%; background: #cbd5e1; margin-right: 0.3rem; vertical-align: 0.05rem; }
+    .mc-dot.on { background: var(--accent-bright); box-shadow: 0 0 0 3px rgba(16, 185, 129, 0.2); animation: mcPulse 2s ease-in-out infinite; }
+    @keyframes mcPulse { 50% { box-shadow: 0 0 0 5px rgba(16, 185, 129, 0.08); } }
   </style>
 </head>
 <body>
@@ -856,10 +880,12 @@
     }
 
     function scheduleRefresh() {
-      clearInterval(state.timer);
       const live = !!(state.board && state.board.live) || !!(state.entry && state.entry.live) || !!(state.league && state.league.live);
       document.getElementById("refreshHint").textContent = live ? "auto-refresh 90s" : "fixtures not started";
-      if (!live) return;
+      if (!live) { clearInterval(state.timer); state.timer = null; return; }
+      // Keep an existing timer: the 30s notify poll calls loadEntry -> scheduleRefresh, and resetting
+      // the 90s interval on every call meant it never fired (league + fixtures strip froze).
+      if (state.timer) return;
       state.timer = setInterval(() => {
         loadBoard(true);
         if (state.league) loadLeague(state.league.leagueId, true);
@@ -952,11 +978,20 @@
     }
 
     function render() {
+      const oldRow = document.querySelector("#fxStrip .fixtures");
+      const keepScroll = oldRow ? oldRow.scrollLeft : 0;
       app.innerHTML = "";
       if (state.entry) app.appendChild(renderEntryCard());
       if ((state.leagues && state.leagues.length) || state.leaguesError || state.leaguesStale) app.appendChild(renderLeagues());
       const fixtures = (state.league && state.league.fixtures) || (state.entry && state.entry.fixtures) || [];
-      if (fixtures.length) app.appendChild(renderFixtures(fixtures));
+      if (fixtures.length) {
+        const strip = renderFixtures(fixtures);
+        app.appendChild(strip);
+        if (keepScroll) strip.querySelector(".fixtures").scrollLeft = keepScroll;
+        paintStripDot();
+        if (!state.scoreboard || state.scoreboard.gameweek !== state.gameweek) loadScoreboard();
+        else scheduleScoreboard();
+      }
       const split = el("<div class='split'></div>");
       if (state.league) {
         split.classList.toggle("has-detail", !!state.picks);
@@ -1032,16 +1067,187 @@
       });
     }
 
+    // ---- live GW scoreboard for the fixtures strip: 10s refresh while any match is live ----
+    const SCOREBOARD_POLL_MS = 10000;
+    const APP_BUILD = "1.33";
+    function scoreboardFor(id) {
+      const sb = state.scoreboard;
+      if (!sb || sb.gameweek !== state.gameweek) return null;
+      return (sb.fixtures || []).find((f) => f.id === id) || null;
+    }
+    // Use the scoreboard row unless the league/entry fixture is demonstrably newer (FPL minutes
+    // further along, or finished while the scoreboard says not), so the strip never goes backwards.
+    function freshestScore(fx) {
+      const sbf = scoreboardFor(fx.id);
+      if (!sbf) return null;
+      const fxDone = !!fx.finished, sbDone = !!sbf.finished;
+      if (fxDone && !sbDone) return null;
+      if (!fxDone && !sbDone && (fx.minutes || 0) > (sbf.minutes || 0) + 1) return null;
+      return sbf;
+    }
+    function stripFixtures() {
+      return (state.league && state.league.fixtures) || (state.entry && state.entry.fixtures) || [];
+    }
+    function fxClock(fx) {
+      return fx.clock && fx.state !== "pre" ? fx.clock : (fx.finished ? "FT" : (fx.started ? (fx.minutes + "'") : (fx.kickoffTime || "").replace("T", " ").slice(0, 16)));
+    }
+    // Patch scores/clocks in the existing strip: no re-render, no scroll jump.
+    function updateStripInPlace() {
+      const strip = document.getElementById("fxStrip");
+      const sb = state.scoreboard;
+      if (!strip || !sb || sb.gameweek !== state.gameweek) return;
+      const src = strip.querySelector(".fx-src");
+      if (src) src.hidden = sb.source !== "ESPN";
+      (sb.fixtures || []).forEach((row) => {
+        const node = strip.querySelector(".fx[data-fx='" + row.id + "']");
+        if (!node) return;
+        const baseFx = stripFixtures().find((x) => x.id === row.id) || {};
+        const f = freshestScore(baseFx) || Object.assign({}, baseFx, { clock: null, state: null });
+        const score = f.started || f.finished ? (fmt(f.homeScore) + "–" + fmt(f.awayScore)) : "vs";
+        const sc = node.querySelector(".score");
+        if (sc && sc.textContent !== score) {
+          sc.textContent = score;
+          node.classList.remove("flash"); void node.offsetWidth; node.classList.add("flash");
+        }
+        const clk = node.querySelector(".clk");
+        const text = fxClock(Object.assign({}, baseFx, f));
+        if (clk && clk.textContent !== text) clk.textContent = text;
+        node.classList.toggle("live", f.started && !f.finished);
+        node.classList.toggle("done", !!f.finished);
+      });
+    }
+    function applyScoreboard(sb) {
+      if (!sb || sb.gameweek !== state.gameweek) return;
+      if (state.scoreboard && sb.generatedAt && state.scoreboard.generatedAt && sb.generatedAt < state.scoreboard.generatedAt) return;
+      state.scoreboard = sb;
+      state.scoreboardAt = Date.now();
+      if (sb.build) checkBuild(sb.build);
+      try { updateStripInPlace(); } catch (e) { console.error("strip update failed", e); }
+      scheduleScoreboard();
+    }
+    // Watchdog: while any match is live, refetch whenever the strip hasn't had fresh data for 20s
+    // (stream stalled, never delivered, or SSE unsupported). Unchanged scores produce no pushes,
+    // so this doubles as the fallback poll.
+    function scoreboardWatchdog() {
+      if (document.visibilityState === "hidden") return;
+      if (!state.scoreboardAt || Date.now() - state.scoreboardAt > 20000) loadScoreboard();
+    }
+    async function loadScoreboard() {
+      if (!state.gameweek) return;
+      try { applyScoreboard(await api("/live/scoreboard?gameweek=" + state.gameweek)); } catch (e) {}
+    }
+    function paintStripDot() {
+      const dot = document.querySelector("#fxStrip .fx-dot");
+      if (dot) { dot.classList.toggle("on", !!state.sbStreamOpen); dot.title = state.sbStreamOpen ? "Live scores: push connected" : "Live scores: polling"; }
+    }
+    function stopScoreboardStream() {
+      if (state.sbStream) { clearTimeout(state.sbStream.__watch); try { state.sbStream.close(); } catch (e) {} }
+      state.sbStream = null;
+      state.sbStreamOpen = false;
+      paintStripDot();
+    }
+    function startScoreboardStream() {
+      if (state.sbStream || typeof EventSource === "undefined" || state.sbStreamDisabled) return false;
+      const gw = state.gameweek;
+      const es = new EventSource("/live/scoreboard/stream?gameweek=" + gw);
+      es.__gw = gw;
+      state.sbStream = es;
+      let gotSnapshot = false;
+      es.onopen = () => {
+        if (state.sbStream !== es) return;
+        state.sbStreamFailures = 0;
+        // No snapshot within 20s of opening: treat the stream as broken and rely on polling.
+        clearTimeout(es.__watch);
+        es.__watch = setTimeout(() => {
+          if (state.sbStream === es && !gotSnapshot) { state.sbStreamDisabled = true; stopScoreboardStream(); loadScoreboard(); }
+        }, 20000);
+      };
+      const onData = (ev) => {
+        if (state.sbStream !== es) return;
+        gotSnapshot = true;
+        state.sbStreamOpen = true;
+        paintStripDot();
+        try { applyScoreboard(JSON.parse(ev.data)); } catch (e) { console.error(e); }
+      };
+      es.addEventListener("snapshot", onData);
+      es.addEventListener("final", (ev) => { onData(ev); stopScoreboardStream(); scheduleScoreboard(); });
+      es.addEventListener("error", (ev) => {
+        if (state.sbStream !== es) return;
+        state.sbStreamOpen = false; paintStripDot();
+        state.sbStreamFailures = (state.sbStreamFailures || 0) + 1;
+        if ((ev && ev.data) || es.readyState === 2 || state.sbStreamFailures >= 3) {
+          state.sbStreamDisabled = state.sbStreamFailures >= 3 || !!(ev && ev.data);
+          stopScoreboardStream();
+          loadScoreboard();
+        }
+      });
+      return true;
+    }
+    function scheduleScoreboard() {
+      const fixtures = stripFixtures();
+      const live = (state.scoreboard && state.scoreboard.gameweek === state.gameweek)
+        ? state.scoreboard.live
+        : fixtures.some((f) => f.started && !f.finished);
+      if (!live || !fixtures.length) {
+        stopScoreboardStream();
+        if (state.scoreboardTimer) { clearInterval(state.scoreboardTimer); state.scoreboardTimer = null; }
+        return;
+      }
+      if (!state.scoreboardTimer) state.scoreboardTimer = setInterval(scoreboardWatchdog, SCOREBOARD_POLL_MS);
+      if (state.sbStream && state.sbStream.__gw !== state.gameweek) stopScoreboardStream();
+      startScoreboardStream();
+    }
+    // iOS Home Screen apps suspend timers and drop connections in the background: on every
+    // resume, check the build, refetch everything now and reconnect streams.
+    let lastResume = 0;
+    function onResume() {
+      if (document.visibilityState === "hidden") return;
+      const now = Date.now();
+      if (now - lastResume < 2000) return;
+      lastResume = now;
+      checkBuild();
+      state.sbStreamDisabled = false; state.sbStreamFailures = 0;
+      stopScoreboardStream();
+      if (stripFixtures().length) loadScoreboard();
+      if (state.league) loadLeague(state.league.leagueId, true);
+      else if (state.entryId) loadEntry(state.entryId, true);
+      if (matchState.id != null) {
+        matchState.streamDisabled = false; matchState.streamFailures = 0;
+        stopMatchStream();
+        loadMatch(true);
+      }
+    }
+    document.addEventListener("visibilitychange", onResume);
+    window.addEventListener("pageshow", (ev) => { if (ev.persisted) onResume(); else lastResume = Date.now(); });
+    window.addEventListener("focus", onResume);
+    window.addEventListener("online", onResume);
+    // Build check: reload once when the server runs a newer build than this page (stale Home Screen app).
+    async function checkBuild(serverBuild) {
+      try {
+        const b = serverBuild || (await api("/version")).build;
+        if (!b || b === APP_BUILD) return;
+        if (matchState.id != null) return;
+        if (sessionStorage.getItem("fpl.reloadedFor") === b) return;
+        sessionStorage.setItem("fpl.reloadedFor", b);
+        location.reload();
+      } catch (e) {}
+    }
     function renderFixtures(fixtures) {
-      const box = el("<section class='card'><div class='muted'>Gameweek fixtures</div><div class='fixtures'></div></section>");
+      const box = el("<section class='card' id='fxStrip'><div class='muted'>Gameweek fixtures <span class='mc-dot fx-dot' title='Live scores'></span><span class='mc-src espn fx-src'" +
+        (state.scoreboard && state.scoreboard.source === "ESPN" ? "" : " hidden") + ">scores: ESPN</span></div><div class='fixtures'></div></section>");
       const row = box.querySelector(".fixtures");
-      fixtures.forEach((fx) => {
+      fixtures.forEach((fxRaw) => {
+        // Live score/clock from the ESPN-backed scoreboard when available (FPL fallback).
+        const sbf = freshestScore(fxRaw);
+        const fx = sbf ? Object.assign({}, fxRaw, {
+          homeScore: sbf.homeScore, awayScore: sbf.awayScore, started: sbf.started, finished: sbf.finished, clock: sbf.clock, state: sbf.state
+        }) : fxRaw;
         const score = fx.started || fx.finished
           ? (fmt(fx.homeScore) + "–" + fmt(fx.awayScore))
           : "vs";
-        const clock = fx.finished ? "FT" : (fx.started ? (fx.minutes + "'") : (fx.kickoffTime || "").replace("T", " ").slice(0, 16));
-        const node = el("<div class='fx tap' role='button' tabindex='0'><div>" + escapeHtml(fx.home) + " <span class='score'>" + score +
-          "</span> " + escapeHtml(fx.away) + "</div><div class='muted'>" + escapeHtml(clock) + " · <span class='fx-open'>Match ›</span></div></div>");
+        const clock = fxClock(fx);
+        const node = el("<div class='fx tap' role='button' tabindex='0' data-fx='" + fx.id + "'><div>" + escapeHtml(fx.home) + " <span class='score'>" + score +
+          "</span> " + escapeHtml(fx.away) + "</div><div class='muted'><span class='clk'>" + escapeHtml(clock) + "</span> · <span class='fx-open'>Match ›</span></div></div>");
         node.addEventListener("click", () => openMatch(fx.id));
         node.addEventListener("keydown", (ev) => { if (ev.key === "Enter" || ev.key === " ") { ev.preventDefault(); openMatch(fx.id); } });
         if (fx.started && !fx.finished) node.classList.add("live");
@@ -1457,7 +1663,7 @@
       if (leagueId) await loadLeague(leagueId);
       if (state.notify && state.entryId) startNotifyPoll();
       if ("serviceWorker" in navigator) {
-        navigator.serviceWorker.register("/sw.js").catch(function () {});
+        navigator.serviceWorker.register("/sw.js?v=" + APP_BUILD).catch(function () {});
       }
     })();
     const MY_ENTRY = 5498977;
@@ -1523,6 +1729,11 @@
       return "<b>" + escapeHtml(f.player) + "</b>" + times(f.count) + extra;
     }
     async function openMatch(fixtureId) {
+      stopMatchStream();
+      clearInterval(matchState.timer);
+      matchState.timer = null;
+      matchState.streamFailures = 0;
+      matchState.streamDisabled = false;
       matchState.id = fixtureId;
       matchState.tab = "facts";
       matchState.data = null;
@@ -1537,6 +1748,9 @@
     function closeMatch(fromPop) {
       clearInterval(matchState.timer);
       matchState.timer = null;
+      stopMatchStream();
+      matchState.streamFailures = 0;
+      matchState.streamDisabled = false;
       matchState.id = null;
       const sheet = document.getElementById("matchSheet");
       sheet.hidden = true;
@@ -1558,8 +1772,7 @@
       const id = matchState.id;
       if (id == null) return;
       try {
-        const q = "?entryId=" + matchEntryId() + (state.gameweek ? "&gameweek=" + state.gameweek : "");
-        const data = await api("/fixtures/" + id + "/match" + q);
+        const data = await api("/fixtures/" + id + "/match" + matchQuery());
         if (matchState.id !== id) return;
         matchState.data = data;
         matchState.error = null;
@@ -1568,12 +1781,89 @@
         if (!quiet || !matchState.data) matchState.error = err.message;
       }
       renderMatch();
-      clearInterval(matchState.timer);
-      matchState.timer = null;
-      if (matchState.data && matchState.data.live) {
-        matchState.timer = setInterval(() => loadMatch(true), 30000);
-      }
+      scheduleMatchUpdates();
     }
+    // Push first (SSE), polling every 10s only when SSE is unsupported or keeps failing.
+    const MATCH_POLL_MS = 10000;
+    function matchQuery() {
+      return "?entryId=" + matchEntryId() + (state.gameweek ? "&gameweek=" + state.gameweek : "");
+    }
+    function scheduleMatchUpdates() {
+      const live = !!(matchState.data && matchState.data.live);
+      if (!live || matchState.id == null) {
+        stopMatchStream();
+        clearInterval(matchState.timer);
+        matchState.timer = null;
+        return;
+      }
+      if (!matchState.streamDisabled && typeof EventSource !== "undefined") {
+        startMatchStream();
+        if (matchState.streamOpen) { clearInterval(matchState.timer); matchState.timer = null; }
+        return;
+      }
+      if (!matchState.timer) matchState.timer = setInterval(() => loadMatch(true), MATCH_POLL_MS);
+    }
+    function applyMatchPayload(raw) {
+      let data;
+      try { data = JSON.parse(raw); } catch (e) { return; }
+      if (!data || data.fixtureId !== matchState.id) return;
+      matchState.data = data;
+      matchState.error = null;
+      renderMatch();
+    }
+    function startMatchStream() {
+      if (matchState.es || matchState.id == null) return;
+      const id = matchState.id;
+      const es = new EventSource("/fixtures/" + id + "/match/stream" + matchQuery());
+      matchState.es = es;
+      es.onopen = () => {
+        if (matchState.es !== es) return;
+        matchState.streamOpen = true;
+        matchState.streamFailures = 0;
+        clearInterval(matchState.timer);
+        matchState.timer = null;
+        paintLiveDot();
+      };
+      es.addEventListener("snapshot", (ev) => { if (matchState.es === es) applyMatchPayload(ev.data); });
+      es.addEventListener("final", (ev) => {
+        if (matchState.es !== es) return;
+        stopMatchStream();
+        applyMatchPayload(ev.data);
+        scheduleMatchUpdates();
+      });
+      es.addEventListener("error", (ev) => {
+        if (matchState.es !== es) return;
+        matchState.streamOpen = false;
+        paintLiveDot();
+        if (ev && ev.data) {
+          // Server-sent error (e.g. capacity): poll instead.
+          matchState.streamDisabled = true;
+          stopMatchStream();
+          scheduleMatchUpdates();
+          return;
+        }
+        matchState.streamFailures = (matchState.streamFailures || 0) + 1;
+        if (es.readyState === 2 || matchState.streamFailures >= 3) {
+          // EventSource gave up or keeps failing: fall back to polling.
+          matchState.streamDisabled = matchState.streamFailures >= 3;
+          stopMatchStream();
+          if (!matchState.timer) matchState.timer = setInterval(() => loadMatch(true), MATCH_POLL_MS);
+        }
+      });
+    }
+    function stopMatchStream() {
+      if (matchState.es) { try { matchState.es.close(); } catch (e) {} }
+      matchState.es = null;
+      matchState.streamOpen = false;
+      paintLiveDot();
+    }
+    function paintLiveDot() {
+      const dot = document.querySelector("#matchSheet .mc-dot");
+      if (!dot) return;
+      dot.classList.toggle("on", !!matchState.streamOpen);
+      dot.title = matchState.streamOpen ? "Live: push updates connected" : "Live updates: polling";
+    }
+
     function renderMatch() {
       const sheet = document.getElementById("matchSheet");
       if (matchState.id == null) return;
@@ -1591,12 +1881,13 @@
         sheet.appendChild(wrap);
         return;
       }
-      top.querySelector(".muted").innerHTML = "GW" + m.gameweek + (m.live ? " · auto-refresh 30s" : "") +
+      top.querySelector(".muted").innerHTML = (m.live ? "<span class='mc-dot" + (matchState.streamOpen ? " on" : "") + "' title='" + (matchState.streamOpen ? "Live: push updates connected" : "Live updates: polling") + "'></span>" : "") + "GW" + m.gameweek + (m.live ? (matchState.streamOpen ? " · live" : " · updating") : "") +
         " <span class='mc-src" + (m.source === "ESPN" ? " espn" : "") + "'>" + (m.source === "ESPN" ? "Source: ESPN + FPL" : "FPL only") + "</span>";
       wrap.appendChild(renderMatchHeader(m));
       const tabs = el("<div class='mc-tabs'></div>");
       const tabList = [["facts", "Facts"], ["lineup", "Lineup"], ["stats", "Stats"]];
       if (m.espn) tabList.push(["commentary", "Commentary"]);
+      if (m.table && m.table.rows && m.table.rows.length) tabList.push(["table", "Table"]);
       if (!tabList.some(([k]) => k === matchState.tab)) matchState.tab = "facts";
       tabList.forEach(([k, label]) => {
         const b = el("<button type='button'>" + label + "</button>");
@@ -1608,6 +1899,7 @@
       if (matchState.tab === "facts") wrap.appendChild(renderMatchFacts(m));
       else if (matchState.tab === "lineup") wrap.appendChild(m.espn && (m.espn.homeLineup || m.espn.awayLineup) ? renderEspnLineup(m) : renderMatchLineup(m));
       else if (matchState.tab === "commentary") wrap.appendChild(renderCommentary(m));
+      else if (matchState.tab === "table") wrap.appendChild(renderLiveTable(m));
       else wrap.appendChild(renderMatchStats(m));
       sheet.innerHTML = "";
       sheet.appendChild(wrap);
@@ -1699,9 +1991,30 @@
       });
       if (m.topBps.length) card.appendChild(bps);
     }
+    function renderLiveTable(m) {
+      const t = m.table;
+      const card = el("<section class='card mc-table'></section>");
+      const anyLive = t.rows.some((r) => r.live);
+      card.appendChild(el("<p class='mc-note'>" + (anyLive ? "Live table as it stands, with in-play scores applied. " : "Premier League table. ") +
+        "Baseline: " + (t.source === "ESPN" ? "ESPN standings" : "FPL results") + "." + (t.note ? " " + escapeHtml(t.note) : "") + "</p>"));
+      const tbl = el("<table class='mc-lt'><thead><tr><th class='pos'>#</th><th class='tm'>Team</th><th>P</th><th>GD</th><th>Pts</th></tr></thead><tbody></tbody></table>");
+      const body = tbl.querySelector("tbody");
+      t.rows.forEach((r) => {
+        const arrow = r.movement > 0 ? "<span class='mv up' title='Up " + r.movement + " from pre-match'>▲</span>"
+          : r.movement < 0 ? "<span class='mv down' title='Down " + (-r.movement) + " from pre-match'>▼</span>" : "<span class='mv'></span>";
+        const live = r.live ? "<span class='lt-live'><span class='lt-dot'></span>" + escapeHtml(r.liveScore || "live") + "</span>" : "";
+        const badge = r.badgeUrl ? "<img src='" + escapeHtml(r.badgeUrl) + "' alt='' width='18' height='18' loading='lazy'>" : "";
+        const gd = (r.goalDifference > 0 ? "+" : "") + r.goalDifference;
+        body.appendChild(el("<tr class='" + (r.inMatch ? "in-match " : "") + (r.live ? "is-live" : "") + "'><td class='pos'>" + r.position + arrow + "</td>" +
+          "<td class='tm'><span class='tm-row'>" + badge + "<b>" + escapeHtml(r.shortName) + "</b></span>" + live + "</td>" +
+          "<td>" + r.played + "</td><td>" + gd + "</td><td class='pts'>" + r.points + "</td></tr>"));
+      });
+      card.appendChild(tbl);
+      return card;
+    }
     function renderCommentary(m) {
       const card = el("<section class='card'></section>");
-      card.appendChild(el("<p class='mc-note'>Live commentary from ESPN, newest first" + (m.live ? " · refreshes every 30s" : "") + ".</p>"));
+      card.appendChild(el("<p class='mc-note'>Live commentary from ESPN, newest first" + (m.live ? " · updates live" : "") + ".</p>"));
       const rows = (m.espn && m.espn.commentary) || [];
       if (!rows.length) card.appendChild(el("<p class='muted'>No commentary yet.</p>"));
       rows.forEach((c) => {

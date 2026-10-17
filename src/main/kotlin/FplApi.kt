@@ -34,6 +34,11 @@ class FplApi(
     override fun eventLive(eventId: Int): JsonObject =
         getJsonObject("$baseUrl/event/$eventId/live/")
 
+    override fun allFixtures(): List<JsonObject> {
+        val array = getJson("$baseUrl/fixtures/") as? JsonArray ?: return emptyList()
+        return array.mapNotNull { it as? JsonObject }
+    }
+
     override fun fixtures(eventId: Int): List<JsonObject> {
         val element = getJson("$baseUrl/fixtures/?event=$eventId")
         val array = element as? JsonArray ?: return emptyList()

@@ -48,6 +48,9 @@ class CachingFplClient(
     override fun eventLive(eventId: Int): JsonObject =
         liveCache.getOrPut(eventId) { TtlCache(ttlMs) }.get { inner.eventLive(eventId) }
 
+    private val allFixturesCache = TtlCache<List<JsonObject>>(ttlMs)
+    override fun allFixtures(): List<JsonObject> = allFixturesCache.get { inner.allFixtures() }
+
     override fun fixtures(eventId: Int): List<JsonObject> =
         fixturesCache.getOrPut(eventId) { TtlCache(ttlMs) }.get { inner.fixtures(eventId) }
 }

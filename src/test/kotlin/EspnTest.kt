@@ -27,6 +27,11 @@ class RecordedEspn(private val fail: Boolean = false, private val empty: Boolean
         if (fail) throw RuntimeException("ESPN down")
         return runCatching { obj("summary_$eventId.json") }.getOrNull()
     }
+    override fun standings(): JsonObject? {
+        calls += "standings"
+        if (fail) throw RuntimeException("ESPN down")
+        return if (empty) null else obj("standings_20261017.json")
+    }
 }
 
 class EspnTest {
@@ -178,5 +183,35 @@ class HttpEspnSourceBackoffTest {
         assertTrue((System.nanoTime() - started) / 1_000_000 < 100, "backoff skips the network")
         now += 31_000L
         assertNull(src.summary("3"))
+    }
+}
+
+class ScoreboardTest {
+    private fun res(name: String) = ScoreboardTest::class.java.getResource("/espn/$name")!!.readText()
+    private val bootstrap = Json.parseToJsonElement(res("fpl_bootstrap_min.json")).jsonObject
+    private val gw7 = (Json.parseToJsonElement(res("fpl_fixtures_all.json")) as JsonArray).map { it.jsonObject }
+        .filter { it.int("event") == 7 }
+
+    @Test
+    fun `strip uses espn score and clock when mapped and fpl otherwise`() {
+        val sb = buildScoreboard(7, gw7, bootstrap, RecordedEspn())
+        assertEquals("ESPN", sb.source); assertTrue(sb.live)
+        val bre = sb.fixtures.single { it.id == 62 }
+        // Recorded ESPN scoreboard (08:19) says 1-0 at 51'; FPL fixture (08:42) is a different snapshot.
+        assertEquals("ESPN", bre.source); assertEquals(1 to 0, bre.homeScore to bre.awayScore); assertEquals("51'", bre.clock)
+        val eve = sb.fixtures.single { it.id == 64 }
+        assertEquals("FT", eve.clock); assertTrue(eve.finished); assertEquals(0 to 2, eve.homeScore to eve.awayScore)
+        val upcoming = sb.fixtures.single { it.id == 61 }
+        assertEquals("FPL", upcoming.source); assertEquals("pre", upcoming.state)
+    }
+
+    @Test
+    fun `strip falls back to fpl when espn fails`() {
+        val sb = buildScoreboard(7, gw7, bootstrap, RecordedEspn(fail = true))
+        assertEquals("FPL", sb.source)
+        val bre = sb.fixtures.single { it.id == 62 }
+        assertEquals("FPL", bre.source); assertEquals(1 to 1, bre.homeScore to bre.awayScore)
+        assertEquals("in", bre.state)
+        assertEquals("FPL", buildScoreboard(7, gw7, bootstrap, null).source)
     }
 }
