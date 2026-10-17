@@ -23,6 +23,7 @@ dependencies {
     implementation("io.dropwizard:dropwizard-core:$dropwizardVersion")
     implementation("com.fasterxml.jackson.module:jackson-module-kotlin:2.17.1")
     implementation("io.opentelemetry:opentelemetry-api:1.49.0")
+    implementation("org.glassfish.jersey.media:jersey-media-sse:3.0.17")
     testImplementation(kotlin("test"))
 }
 

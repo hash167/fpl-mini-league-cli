@@ -3,6 +3,6 @@
   "short_name": "FPL Live",
   "start_url": "/",
   "display": "standalone",
-  "background_color": "#10141c",
-  "theme_color": "#10141c"
+  "background_color": "#f4f6fb",
+  "theme_color": "#f4f6fb"
 }

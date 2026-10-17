@@ -571,7 +571,8 @@ class FakeFplClient(
     private val eventLiveJson: JsonObject = JsonObject(emptyMap()),
     private val fixtureList: List<JsonObject> = emptyList(),
     private val historyByEntry: Map<Int, JsonObject> = emptyMap(),
-    private val entryEvents: Map<Pair<Int, Int>, JsonObject> = emptyMap()
+    private val entryEvents: Map<Pair<Int, Int>, JsonObject> = emptyMap(),
+    private val allFixtureList: List<JsonObject> = emptyList()
 ) : FplClient {
     @Volatile var failWith: Exception? = null
     val standingsRequested = java.util.Collections.synchronizedList(mutableListOf<Int>())
@@ -599,4 +600,5 @@ class FakeFplClient(
     }
     override fun eventLive(eventId: Int): JsonObject = eventLiveJson
     override fun fixtures(eventId: Int): List<JsonObject> = fixtureList
+    override fun allFixtures(): List<JsonObject> = allFixtureList
 }

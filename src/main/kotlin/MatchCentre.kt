@@ -91,7 +91,8 @@ data class MatchDetail(
     val minutesNote: String = MATCH_MINUTES_NOTE,
     /** "ESPN" when the ESPN feed enriched this view, otherwise "FPL only". */
     val source: String = "FPL only",
-    val espn: EspnMatch? = null
+    val espn: EspnMatch? = null,
+    val table: LeagueTable? = null
 )
 
 /** Merge ESPN data into the FPL view; FPL stays the source of truth for points and bonus. */

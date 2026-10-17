@@ -87,6 +87,11 @@ class FplService(
     )
     private val priceStore = OfficialPriceSnapshotStore(pricesSnapshotPath, clock)
 
+    fun liveScoreboard(gameweek: Int?): ScoreboardResponse {
+        val gw = gameweek ?: currentGameweek()
+        return buildScoreboard(gw, api.fixtures(gw), api.bootstrap(), espn)
+    }
+
     fun matchDetail(fixtureId: Int, gameweek: Int?, entryId: Int?): MatchDetail {
         val gw = gameweek ?: currentGameweek()
         val gwFixtures = api.fixtures(gw)
@@ -106,7 +111,18 @@ class FplService(
                 null
             }
         }
-        return applyEspn(base, enriched)
+        val merged = applyEspn(base, enriched)
+        val table = try {
+            val all = api.allFixtures().ifEmpty { gwFixtures }
+            val standings = espn?.let { runCatching { it.standings() }.getOrNull() }
+            // The open match's ESPN score is fresher than FPL's while it's in play.
+            val overrides = enriched?.takeIf { it.state == "in" && it.homeScore != null && it.awayScore != null }
+                ?.let { mapOf(fixtureId to (it.homeScore!! to it.awayScore!!)) } ?: emptyMap()
+            buildLeagueTable(all, bootstrap, standings, base.home.id to base.away.id, overrides)
+        } catch (_: Exception) {
+            null
+        }
+        return merged.copy(table = table)
     }
 
     fun currentGameweek(): Int {
