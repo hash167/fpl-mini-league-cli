@@ -71,7 +71,7 @@ data class MatchLineupPlayer(
     val viceCaptain: Boolean
 )
 
-data class MatchStatRow(val label: String, val home: String, val away: String)
+data class MatchStatRow(val label: String, val home: String, val away: String, val source: String = "FPL")
 
 data class MatchDetail(
     val fixtureId: Int,
@@ -88,8 +88,27 @@ data class MatchDetail(
     val stats: List<MatchStatRow>,
     val squadEntryId: Int?,
     val minutesAvailable: Boolean = false,
-    val minutesNote: String = MATCH_MINUTES_NOTE
+    val minutesNote: String = MATCH_MINUTES_NOTE,
+    /** "ESPN" when the ESPN feed enriched this view, otherwise "FPL only". */
+    val source: String = "FPL only",
+    val espn: EspnMatch? = null
 )
+
+/** Merge ESPN data into the FPL view; FPL stays the source of truth for points and bonus. */
+fun applyEspn(base: MatchDetail, espn: EspnMatch?): MatchDetail {
+    if (espn == null) return base
+    val phase = when (espn.state) { "in" -> "live"; "post" -> "ft"; else -> base.status.phase }
+    val label = if (espn.state == "pre") base.status.label else espn.statusLabel
+    return base.copy(
+        status = base.status.copy(phase = phase, label = label),
+        live = base.live || espn.state == "in",
+        stats = espn.stats + base.stats,
+        minutesAvailable = espn.timeline.isNotEmpty() || espn.state != "pre",
+        minutesNote = "Minutes, lineups, commentary and team stats from ESPN; FPL points and bonus from the official FPL API.",
+        source = "ESPN",
+        espn = espn
+    )
+}
 
 fun matchStatus(started: Boolean, finishedProvisional: Boolean, finished: Boolean, minutes: Int, kickoff: String?): MatchStatus {
     val (phase, label) = when {
