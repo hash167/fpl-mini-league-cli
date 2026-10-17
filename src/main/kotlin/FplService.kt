@@ -86,6 +86,19 @@ class FplService(
     )
     private val priceStore = OfficialPriceSnapshotStore(pricesSnapshotPath, clock)
 
+    fun matchDetail(fixtureId: Int, gameweek: Int?, entryId: Int?): MatchDetail {
+        val gw = gameweek ?: currentGameweek()
+        val gwFixtures = api.fixtures(gw)
+        val fixture = gwFixtures.firstOrNull { it.int("id") == fixtureId }
+            ?: throw FplApiException("Fixture $fixtureId not found in GW $gw", 404)
+        val squad = if (entryId == null) emptyList() else try {
+            api.entryPicks(entryId, gw)
+        } catch (_: Exception) {
+            emptyList()
+        }
+        return buildMatchDetail(fixture, gw, api.bootstrap(), api.eventLive(gw), gwFixtures, squad, entryId)
+    }
+
     fun currentGameweek(): Int {
         return currentGameweekId(api.bootstrap())
             ?: throw IllegalStateException("Could not determine current gameweek from FPL bootstrap data.")

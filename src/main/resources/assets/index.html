@@ -459,6 +459,71 @@
     #gwStats .out .bar i { background: #fb7185; }
     #gwStats .mine { display: inline-block; margin-left: 0.3rem; padding: 0 0.35rem; border-radius: 999px; background: #ecfdf5; color: var(--accent); border: 1px solid #a7f3d0; font-size: 0.68rem; font-weight: 650; vertical-align: 1px; }
     #gwStats .gws-note { margin-top: 0.6rem; font-size: 0.78rem; color: var(--card-muted); background: #f8fafc; border-radius: 10px; padding: 0.45rem 0.6rem; }
+    /* FotMob-style match view — light theme */
+    .fx.tap { cursor: pointer; }
+    .fx.tap:hover { border-color: #a7f3d0; background: #f0fdf4; }
+    .fx .fx-open { font-size: 0.68rem; color: var(--accent); font-weight: 650; }
+    #matchSheet {
+      position: fixed; inset: 0; z-index: 40; background: var(--bg); color: var(--text);
+      overflow-y: auto; overflow-x: hidden; -webkit-overflow-scrolling: touch;
+    }
+    #matchSheet[hidden] { display: none; }
+    .mc-wrap { max-width: 640px; margin: 0 auto; padding: 0.7rem 0.75rem 3rem; width: 100%; box-sizing: border-box; }
+    .mc-top { display: flex; align-items: center; justify-content: space-between; gap: 0.5rem; margin-bottom: 0.5rem; }
+    .mc-top .muted { font-size: 0.78rem; }
+    .mc-head { text-align: center; }
+    .mc-teams { display: grid; grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr); align-items: start; gap: 0.4rem; }
+    .mc-team { display: flex; flex-direction: column; align-items: center; gap: 0.3rem; min-width: 0; }
+    .mc-team img { width: 52px; height: 52px; object-fit: contain; }
+    .mc-team .nm { font-weight: 650; font-size: 0.92rem; color: var(--card-ink); overflow-wrap: anywhere; }
+    .mc-score { font-size: 2.1rem; font-weight: 750; letter-spacing: 0.02em; color: var(--card-ink); padding-top: 0.45rem; white-space: nowrap; font-variant-numeric: tabular-nums; }
+    .mc-status { display: inline-block; margin-top: 0.25rem; font-size: 0.78rem; font-weight: 650; padding: 0.12rem 0.55rem; border-radius: 999px; background: var(--bg-3); color: var(--muted); }
+    .mc-status.live { background: #ecfdf5; color: #047857; }
+    .mc-scorers { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 0.6rem; margin-top: 0.6rem; font-size: 0.78rem; color: var(--card-muted); }
+    .mc-scorers .h { text-align: right; }
+    .mc-scorers .a { text-align: left; }
+    .mc-scorers div div { overflow-wrap: anywhere; }
+    .mc-tabs { display: flex; gap: 0.35rem; margin: 0.75rem 0 0; }
+    .mc-tabs button { flex: 1 1 0; min-width: 0; border-radius: 999px; font-weight: 650; }
+    .mc-tabs button.active { background: #ecfdf5; border-color: #a7f3d0; color: #047857; }
+    .mc-note { font-size: 0.74rem; color: var(--card-muted); margin: 0 0 0.5rem; }
+    .mc-sec { margin-top: 0.7rem; }
+    .mc-sec h4 { margin: 0 0 0.3rem; font-size: 0.72rem; text-transform: uppercase; letter-spacing: 0.05em; color: var(--card-muted); }
+    .mc-ev { display: grid; grid-template-columns: minmax(0, 1fr) 2rem minmax(0, 1fr); align-items: center; gap: 0.3rem; padding: 0.3rem 0; border-bottom: 1px solid var(--line); font-size: 0.85rem; }
+    .mc-ev:last-child { border-bottom: none; }
+    .mc-ev .h { text-align: right; overflow-wrap: anywhere; }
+    .mc-ev .a { text-align: left; overflow-wrap: anywhere; }
+    .mc-ev .ic { text-align: center; font-size: 0.95rem; }
+    .mc-ev .sub { display: block; font-size: 0.7rem; color: var(--card-muted); }
+    .mc-ev.mine .h b, .mc-ev.mine .a b, .mc-mine { color: #047857; }
+    .mc-card { display: inline-block; width: 0.62rem; height: 0.85rem; border-radius: 2px; vertical-align: -0.1rem; }
+    .mc-card.y { background: #facc15; } .mc-card.r { background: #e11d48; }
+    .mc-marker { text-align: center; font-size: 0.72rem; color: var(--card-muted); padding: 0.3rem 0; font-weight: 650; }
+    .mc-bonus { display: flex; justify-content: space-between; gap: 0.5rem; padding: 0.28rem 0; border-bottom: 1px solid var(--line); font-size: 0.84rem; }
+    .mc-bonus:last-child { border-bottom: none; }
+    .mc-bonus .b { font-weight: 700; color: var(--accent); white-space: nowrap; }
+    .mc-lineup h4 { display: flex; align-items: center; gap: 0.4rem; }
+    .mc-lineup h4 img { width: 20px; height: 20px; }
+    .mc-pl { display: grid; grid-template-columns: 2.4rem minmax(0, 1fr) auto auto; gap: 0.4rem; align-items: center; padding: 0.32rem 0.35rem; border-bottom: 1px solid var(--line); font-size: 0.84rem; border-radius: 8px; }
+    .mc-pl .pos { font-size: 0.68rem; color: var(--card-muted); font-weight: 650; }
+    .mc-pl .nm { min-width: 0; overflow-wrap: anywhere; }
+    .mc-pl .min { font-size: 0.74rem; color: var(--card-muted); white-space: nowrap; }
+    .mc-pl .pts { font-weight: 700; min-width: 2.2rem; text-align: right; white-space: nowrap; }
+    .mc-pl .pts small { color: var(--accent); font-weight: 650; }
+    .mc-pl.mine { background: #ecfdf5; box-shadow: inset 3px 0 0 var(--accent); }
+    .mc-pl .cap { font-size: 0.66rem; font-weight: 750; color: #fff; background: var(--accent); border-radius: 999px; padding: 0 0.32rem; margin-left: 0.2rem; }
+    .mc-pl .subbed { font-size: 0.68rem; color: var(--card-muted); }
+    .mc-stat { padding: 0.4rem 0; border-bottom: 1px solid var(--line); }
+    .mc-stat:last-child { border-bottom: none; }
+    .mc-stat .row { display: grid; grid-template-columns: 3.2rem minmax(0, 1fr) 3.2rem; align-items: center; font-size: 0.85rem; font-variant-numeric: tabular-nums; }
+    .mc-stat .row .lbl { text-align: center; color: var(--card-muted); font-size: 0.78rem; }
+    .mc-stat .row .hv { text-align: left; font-weight: 700; }
+    .mc-stat .row .av { text-align: right; font-weight: 700; }
+    .mc-bar { display: flex; gap: 3px; margin-top: 0.25rem; height: 5px; }
+    .mc-bar span { border-radius: 3px; }
+    .mc-bar .bh { background: var(--accent); }
+    .mc-bar .ba { background: #94a3b8; }
+    .mc-bar.empty span { background: var(--line); }
   </style>
 </head>
 <body>
@@ -480,6 +545,7 @@
       <button type="button" id="openLeague">Open league</button>
     </form>
     <div id="app"></div>
+    <div id="matchSheet" hidden role="dialog" aria-modal="true" aria-label="Match details"></div>
     <section class="card collapsed" id="homeBoard">
       <div class="board-head">
         <div>
@@ -956,8 +1022,10 @@
           ? (fmt(fx.homeScore) + "–" + fmt(fx.awayScore))
           : "vs";
         const clock = fx.finished ? "FT" : (fx.started ? (fx.minutes + "'") : (fx.kickoffTime || "").replace("T", " ").slice(0, 16));
-        const node = el("<div class='fx'><div>" + escapeHtml(fx.home) + " <span class='score'>" + score +
-          "</span> " + escapeHtml(fx.away) + "</div><div class='muted'>" + escapeHtml(clock) + "</div></div>");
+        const node = el("<div class='fx tap' role='button' tabindex='0'><div>" + escapeHtml(fx.home) + " <span class='score'>" + score +
+          "</span> " + escapeHtml(fx.away) + "</div><div class='muted'>" + escapeHtml(clock) + " · <span class='fx-open'>Match ›</span></div></div>");
+        node.addEventListener("click", () => openMatch(fx.id));
+        node.addEventListener("keydown", (ev) => { if (ev.key === "Enter" || ev.key === " ") { ev.preventDefault(); openMatch(fx.id); } });
         if (fx.started && !fx.finished) node.classList.add("live");
         if (fx.finished) node.classList.add("done");
         const mine = playersInFixture(fx);
@@ -1409,6 +1477,218 @@
       }
     }
     loadGwStats();
+    // ---- FotMob-style match view (data: /fixtures/{id}/match, official FPL API only) ----
+    const matchState = { id: null, data: null, tab: "facts", timer: null, error: null };
+    const FACT_ICONS = {
+      goals_scored: "⚽", own_goals: "⚽", assists: "👟", penalties_saved: "🧤", penalties_missed: "✖",
+      yellow_cards: "<span class='mc-card y'></span>", red_cards: "<span class='mc-card r'></span>"
+    };
+    const FACT_SECTIONS = [
+      ["Goals", ["goals_scored", "own_goals"]],
+      ["Assists", ["assists"]],
+      ["Penalties", ["penalties_saved", "penalties_missed"]],
+      ["Cards", ["yellow_cards", "red_cards"]]
+    ];
+    function matchEntryId() { return state.entryId || MY_ENTRY; }
+    function kickoffLabel(iso) {
+      if (!iso) return "TBC";
+      const d = new Date(iso);
+      return d.toLocaleString([], { weekday: "short", day: "numeric", month: "short", hour: "numeric", minute: "2-digit" });
+    }
+    function matchStatusText(m) {
+      return m.status.phase === "upcoming" ? kickoffLabel(m.status.kickoffTime) : m.status.label;
+    }
+    function times(n) { return n > 1 ? " ×" + n : ""; }
+    function factLabel(f) {
+      const extra = f.type === "own_goals" ? " (OG)" : f.type === "penalties_saved" ? " (pen saved)" :
+        f.type === "penalties_missed" ? " (pen missed)" : f.type === "red_cards" ? " (red)" : "";
+      return "<b>" + escapeHtml(f.player) + "</b>" + times(f.count) + extra;
+    }
+    async function openMatch(fixtureId) {
+      matchState.id = fixtureId;
+      matchState.tab = "facts";
+      matchState.data = null;
+      matchState.error = null;
+      const sheet = document.getElementById("matchSheet");
+      sheet.hidden = false;
+      document.body.style.overflow = "hidden";
+      if (location.hash !== "#match-" + fixtureId) { history.pushState({ match: fixtureId }, "", "#match-" + fixtureId); matchState.pushed = true; }
+      renderMatch();
+      await loadMatch(false);
+    }
+    function closeMatch(fromPop) {
+      clearInterval(matchState.timer);
+      matchState.timer = null;
+      matchState.id = null;
+      const sheet = document.getElementById("matchSheet");
+      sheet.hidden = true;
+      sheet.innerHTML = "";
+      document.body.style.overflow = "";
+      if (!fromPop && location.hash.indexOf("#match-") === 0) {
+        if (matchState.pushed) history.back();
+        else history.replaceState(null, "", location.pathname + location.search);
+      }
+      matchState.pushed = false;
+    }
+    window.addEventListener("popstate", () => {
+      const m = /^#match-(\d+)$/.exec(location.hash);
+      if (m) { if (Number(m[1]) !== matchState.id) openMatch(Number(m[1])); }
+      else if (matchState.id != null) closeMatch(true);
+    });
+    document.addEventListener("keydown", (ev) => { if (ev.key === "Escape" && matchState.id != null) closeMatch(false); });
+    async function loadMatch(quiet) {
+      const id = matchState.id;
+      if (id == null) return;
+      try {
+        const q = "?entryId=" + matchEntryId() + (state.gameweek ? "&gameweek=" + state.gameweek : "");
+        const data = await api("/fixtures/" + id + "/match" + q);
+        if (matchState.id !== id) return;
+        matchState.data = data;
+        matchState.error = null;
+      } catch (err) {
+        if (matchState.id !== id) return;
+        if (!quiet || !matchState.data) matchState.error = err.message;
+      }
+      renderMatch();
+      clearInterval(matchState.timer);
+      matchState.timer = null;
+      if (matchState.data && matchState.data.live) {
+        matchState.timer = setInterval(() => loadMatch(true), 45000);
+      }
+    }
+    function renderMatch() {
+      const sheet = document.getElementById("matchSheet");
+      if (matchState.id == null) return;
+      const m = matchState.data;
+      const scrollTop = sheet.scrollTop;
+      const wrap = el("<div class='mc-wrap'></div>");
+      const top = el("<div class='mc-top'><button type='button' class='mc-back'>‹ Back</button><span class='muted'></span></div>");
+      top.querySelector(".mc-back").onclick = () => closeMatch(false);
+      wrap.appendChild(top);
+      if (!m) {
+        wrap.appendChild(el("<section class='card'>" + (matchState.error
+          ? "<p class='error'>" + escapeHtml(matchState.error) + "</p>"
+          : "<p class='muted'>Loading match…</p>") + "</section>"));
+        sheet.innerHTML = "";
+        sheet.appendChild(wrap);
+        return;
+      }
+      top.querySelector(".muted").textContent = "GW" + m.gameweek + (m.live ? " · auto-refresh 45s" : "");
+      wrap.appendChild(renderMatchHeader(m));
+      const tabs = el("<div class='mc-tabs'></div>");
+      [["facts", "Facts"], ["lineup", "Lineup"], ["stats", "Stats"]].forEach(([k, label]) => {
+        const b = el("<button type='button'>" + label + "</button>");
+        if (matchState.tab === k) b.classList.add("active");
+        b.onclick = () => { matchState.tab = k; renderMatch(); };
+        tabs.appendChild(b);
+      });
+      wrap.appendChild(tabs);
+      if (matchState.tab === "facts") wrap.appendChild(renderMatchFacts(m));
+      else if (matchState.tab === "lineup") wrap.appendChild(renderMatchLineup(m));
+      else wrap.appendChild(renderMatchStats(m));
+      sheet.innerHTML = "";
+      sheet.appendChild(wrap);
+      sheet.scrollTop = scrollTop;
+    }
+    function crest(team, size) {
+      return team.badgeUrl ? "<img src='" + escapeHtml(team.badgeUrl) + "' alt='' loading='lazy'" + (size ? " width='" + size + "' height='" + size + "'" : "") + ">" : "";
+    }
+    function renderMatchHeader(m) {
+      const started = m.status.phase !== "upcoming";
+      const score = started ? (fmt(m.home.score) + " – " + fmt(m.away.score)) : "vs";
+      const card = el("<section class='card mc-head'><div class='mc-teams'>" +
+        "<div class='mc-team'>" + crest(m.home) + "<span class='nm'>" + escapeHtml(m.home.name) + "</span></div>" +
+        "<div><div class='mc-score'>" + score + "</div><span class='mc-status" + (m.live ? " live" : "") + "'>" + escapeHtml(matchStatusText(m)) + "</span></div>" +
+        "<div class='mc-team'>" + crest(m.away) + "<span class='nm'>" + escapeHtml(m.away.name) + "</span></div>" +
+        "</div><div class='mc-scorers'><div class='h'></div><div class='a'></div></div></section>");
+      ["h", "a"].forEach((side) => {
+        const col = card.querySelector(".mc-scorers ." + side);
+        m.facts.filter((f) => f.scoringSide === side).forEach((f) => {
+          col.appendChild(el("<div" + (f.inSquad ? " class='mc-mine'" : "") + ">⚽ " + escapeHtml(f.player) + times(f.count) + (f.type === "own_goals" ? " (OG)" : "") + "</div>"));
+        });
+      });
+      return card;
+    }
+    function renderMatchFacts(m) {
+      const card = el("<section class='card'></section>");
+      card.appendChild(el("<p class='mc-note'>" + escapeHtml(m.minutesNote) + "</p>"));
+      if (m.status.phase === "upcoming") {
+        card.appendChild(el("<p class='muted'>Kick-off " + escapeHtml(kickoffLabel(m.status.kickoffTime)) + ". Facts appear once the match starts.</p>"));
+        return card;
+      }
+      let any = false;
+      FACT_SECTIONS.forEach(([title, types]) => {
+        const rows = m.facts.filter((f) => types.indexOf(f.type) >= 0);
+        if (!rows.length) return;
+        any = true;
+        const sec = el("<div class='mc-sec'><h4>" + title + "</h4></div>");
+        rows.forEach((f) => {
+          // Own goals sit on the side whose score they increase.
+          const side = f.type === "own_goals" ? f.scoringSide : f.side;
+          const txt = factLabel(f);
+          sec.appendChild(el("<div class='mc-ev" + (f.inSquad ? " mine" : "") + "'><div class='h'>" + (side === "h" ? txt : "") +
+            "</div><div class='ic'>" + FACT_ICONS[f.type] + "</div><div class='a'>" + (side === "a" ? txt : "") + "</div></div>"));
+        });
+        card.appendChild(sec);
+      });
+      if (!any) card.appendChild(el("<p class='muted'>No goals, cards or penalty incidents yet.</p>"));
+      const marker = m.status.phase === "ft" ? "Full time · " + fmt(m.home.score) + " – " + fmt(m.away.score)
+        : (m.status.minutes >= 45 ? "Half-time reached · " : "In play · ") + fmt(m.home.score) + " – " + fmt(m.away.score);
+      card.appendChild(el("<div class='mc-marker'>" + escapeHtml(marker) + "</div>"));
+
+      const bonus = el("<div class='mc-sec'><h4>Bonus points " + ({ confirmed: "(confirmed)", provisional: "(provisional, from FPL)" }[m.status.bonusSource] || "(projected from BPS)") + "</h4></div>");
+      if (!m.bonus.length) bonus.appendChild(el("<p class='muted'>No bonus yet.</p>"));
+      m.bonus.forEach((b) => {
+        bonus.appendChild(el("<div class='mc-bonus'><span" + (b.inSquad ? " class='mc-mine'" : "") + ">" + escapeHtml(b.player) +
+          " <span class='muted'>" + escapeHtml(b.side === "h" ? m.home.shortName : m.away.shortName) + " · " + b.bps + " BPS</span></span><span class='b'>+" + b.bonus + "</span></div>"));
+      });
+      card.appendChild(bonus);
+      const bps = el("<div class='mc-sec'><h4>Top BPS</h4></div>");
+      m.topBps.forEach((b) => {
+        bps.appendChild(el("<div class='mc-bonus'><span" + (b.inSquad ? " class='mc-mine'" : "") + ">" + escapeHtml(b.player) +
+          " <span class='muted'>" + escapeHtml(b.side === "h" ? m.home.shortName : m.away.shortName) + "</span></span><span class='b'>" + b.bps + "</span></div>"));
+      });
+      if (m.topBps.length) card.appendChild(bps);
+      return card;
+    }
+    function renderMatchLineup(m) {
+      const card = el("<section class='card mc-lineup'></section>");
+      card.appendChild(el("<p class='mc-note'>Players who've played, with live FPL points. Green = in the squad of entry " + escapeHtml(m.squadEntryId || matchEntryId()) + ".</p>"));
+      [[m.home, m.homeLineup], [m.away, m.awayLineup]].forEach(([team, rows]) => {
+        const sec = el("<div class='mc-sec'><h4>" + crest(team, 20) + escapeHtml(team.name) + "</h4></div>");
+        if (!rows.length) sec.appendChild(el("<p class='muted'>No minutes yet.</p>"));
+        rows.forEach((p) => {
+          const icons = "⚽".repeat(p.goals) + "👟".repeat(p.assists) +
+            (p.yellow ? " <span class='mc-card y'></span>" : "") + (p.red ? " <span class='mc-card r'></span>" : "");
+          const cap = p.captain ? "<span class='cap'>C</span>" : (p.viceCaptain ? "<span class='cap'>V</span>" : "");
+          const sub = p.started === false ? " <span class='subbed'>sub</span>" : "";
+          const bonus = p.projectedBonus ? " <small>+" + p.projectedBonus + "</small>" : "";
+          sec.appendChild(el("<div class='mc-pl" + (p.inSquad ? " mine" : "") + "'><span class='pos'>" + escapeHtml(p.position) + "</span>" +
+            "<span class='nm'>" + escapeHtml(p.player) + cap + sub + " " + icons + "</span>" +
+            "<span class='min'>" + p.minutes + "'</span><span class='pts'>" + p.points + bonus + "</span></div>"));
+        });
+        card.appendChild(sec);
+      });
+      return card;
+    }
+    function renderMatchStats(m) {
+      const card = el("<section class='card'></section>");
+      card.appendChild(el("<p class='mc-note'>Team totals from FPL match stats. FPL has no possession or shot data.</p>"));
+      const head = el("<div class='mc-stat'><div class='row'><span class='hv'>" + crest(m.home, 22) + "</span><span class='lbl'></span><span class='av'>" + crest(m.away, 22) + "</span></div></div>");
+      card.appendChild(head);
+      m.stats.forEach((s) => {
+        const h = parseFloat(s.home) || 0, a = parseFloat(s.away) || 0;
+        const tot = Math.abs(h) + Math.abs(a);
+        const hp = tot ? Math.round(Math.abs(h) / tot * 100) : 50;
+        card.appendChild(el("<div class='mc-stat'><div class='row'><span class='hv'>" + escapeHtml(s.home) + "</span><span class='lbl'>" + escapeHtml(s.label) +
+          "</span><span class='av'>" + escapeHtml(s.away) + "</span></div><div class='mc-bar" + (tot ? "" : " empty") + "'><span class='bh' style='flex:" + hp + "'></span><span class='ba' style='flex:" + (100 - hp) + "'></span></div></div>"));
+      });
+      return card;
+    }
+    (function openMatchFromHash() {
+      const m = /^#match-(\d+)$/.exec(location.hash);
+      if (m) setTimeout(() => openMatch(Number(m[1])), 0);
+    })();
   </script>
 </body>
 </html>

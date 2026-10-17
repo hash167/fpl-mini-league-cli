@@ -37,4 +37,18 @@ class UiAssetsContractTest {
         assertTrue(html.contains("#toastHost"), "toast host styles must remain")
         assertTrue(html.contains("boardChips"), "board filter chips must remain")
     }
+
+    @Test
+    fun `fixtures open a light FotMob-style match view`() {
+        val html = Files.readString(Paths.get("src/main/resources/assets/index.html"))
+        assertTrue(html.contains("openMatch(fx.id)"), "fixture tiles must open the match view")
+        assertTrue(html.contains("id=\"matchSheet\""), "match sheet container must exist")
+        assertTrue(html.contains("\"/fixtures/\" + id + \"/match\""), "match view must load the match endpoint")
+        assertTrue(html.contains("[\"facts\", \"Facts\"], [\"lineup\", \"Lineup\"], [\"stats\", \"Stats\"]"), "Facts/Lineup/Stats tabs")
+        assertTrue(html.contains("#matchSheet {\n      position: fixed; inset: 0; z-index: 40; background: var(--bg)"), "match sheet must use the light page background")
+        assertTrue(html.contains("overflow-x: hidden"), "no horizontal overflow")
+        assertTrue(html.contains("setInterval(() => loadMatch(true)"), "live matches auto-refresh")
+        val css = html.substring(html.indexOf("/* FotMob-style match view"), html.indexOf("</style>"))
+        assertTrue(!Regex("background:\\s*#(0|1)[0-9a-f]{5}").containsMatchIn(css), "match view must not use dark backgrounds")
+    }
 }
