@@ -524,6 +524,24 @@
     .mc-bar .bh { background: var(--accent); }
     .mc-bar .ba { background: #94a3b8; }
     .mc-bar.empty span { background: var(--line); }
+    .mc-src { display: inline-block; font-size: 0.68rem; font-weight: 650; padding: 0.05rem 0.4rem; border-radius: 999px; background: var(--bg-3); color: var(--muted); border: 1px solid var(--line); }
+    .mc-src.espn { background: #ecfdf5; color: #047857; border-color: #a7f3d0; }
+    .mc-tabs button { padding-left: 0.2rem; padding-right: 0.2rem; font-size: 0.82rem; }
+    .mc-tl { grid-template-columns: minmax(0, 1fr) 3.1rem minmax(0, 1fr); }
+    .mc-tl .ic { display: flex; flex-direction: column; align-items: center; gap: 0.1rem; }
+    .mc-min { font-size: 0.7rem; font-weight: 700; color: var(--card-muted); white-space: nowrap; }
+    .mc-sc { display: inline-block; font-size: 0.72rem; font-weight: 700; padding: 0 0.35rem; border-radius: 999px; background: #ecfdf5; color: #047857; white-space: nowrap; }
+    .mc-in { color: var(--accent); font-weight: 650; }
+    .mc-out { color: var(--danger); }
+    .mc-period { border-top: 1px solid var(--line); border-bottom: 1px solid var(--line); background: #f8fafc; border-radius: 8px; margin: 0.25rem 0; }
+    .mc-cm { display: grid; grid-template-columns: 3.2rem minmax(0, 1fr); gap: 0.45rem; padding: 0.4rem 0; border-bottom: 1px solid var(--line); font-size: 0.84rem; }
+    .mc-cm:last-child { border-bottom: none; }
+    .mc-cm .tx { overflow-wrap: anywhere; }
+    .mc-cm.goal { background: #ecfdf5; border-radius: 8px; padding-left: 0.3rem; font-weight: 650; }
+    .mc-cm.red .tx { color: var(--danger); }
+    .mc-form { font-size: 0.72rem; color: var(--accent); font-weight: 700; text-transform: none; letter-spacing: 0; }
+    .mc-subhead { font-size: 0.68rem; text-transform: uppercase; letter-spacing: 0.05em; color: var(--card-muted); margin: 0.55rem 0 0.15rem; font-weight: 650; }
+    .mc-pl.unused { opacity: 0.6; }
   </style>
 </head>
 <body>
@@ -1553,7 +1571,7 @@
       clearInterval(matchState.timer);
       matchState.timer = null;
       if (matchState.data && matchState.data.live) {
-        matchState.timer = setInterval(() => loadMatch(true), 45000);
+        matchState.timer = setInterval(() => loadMatch(true), 30000);
       }
     }
     function renderMatch() {
@@ -1573,10 +1591,14 @@
         sheet.appendChild(wrap);
         return;
       }
-      top.querySelector(".muted").textContent = "GW" + m.gameweek + (m.live ? " · auto-refresh 45s" : "");
+      top.querySelector(".muted").innerHTML = "GW" + m.gameweek + (m.live ? " · auto-refresh 30s" : "") +
+        " <span class='mc-src" + (m.source === "ESPN" ? " espn" : "") + "'>" + (m.source === "ESPN" ? "Source: ESPN + FPL" : "FPL only") + "</span>";
       wrap.appendChild(renderMatchHeader(m));
       const tabs = el("<div class='mc-tabs'></div>");
-      [["facts", "Facts"], ["lineup", "Lineup"], ["stats", "Stats"]].forEach(([k, label]) => {
+      const tabList = [["facts", "Facts"], ["lineup", "Lineup"], ["stats", "Stats"]];
+      if (m.espn) tabList.push(["commentary", "Commentary"]);
+      if (!tabList.some(([k]) => k === matchState.tab)) matchState.tab = "facts";
+      tabList.forEach(([k, label]) => {
         const b = el("<button type='button'>" + label + "</button>");
         if (matchState.tab === k) b.classList.add("active");
         b.onclick = () => { matchState.tab = k; renderMatch(); };
@@ -1584,7 +1606,8 @@
       });
       wrap.appendChild(tabs);
       if (matchState.tab === "facts") wrap.appendChild(renderMatchFacts(m));
-      else if (matchState.tab === "lineup") wrap.appendChild(renderMatchLineup(m));
+      else if (matchState.tab === "lineup") wrap.appendChild(m.espn && (m.espn.homeLineup || m.espn.awayLineup) ? renderEspnLineup(m) : renderMatchLineup(m));
+      else if (matchState.tab === "commentary") wrap.appendChild(renderCommentary(m));
       else wrap.appendChild(renderMatchStats(m));
       sheet.innerHTML = "";
       sheet.appendChild(wrap);
@@ -1601,6 +1624,21 @@
         "<div><div class='mc-score'>" + score + "</div><span class='mc-status" + (m.live ? " live" : "") + "'>" + escapeHtml(matchStatusText(m)) + "</span></div>" +
         "<div class='mc-team'>" + crest(m.away) + "<span class='nm'>" + escapeHtml(m.away.name) + "</span></div>" +
         "</div><div class='mc-scorers'><div class='h'></div><div class='a'></div></div></section>");
+      const goalsTl = m.espn ? m.espn.timeline.filter((t) => t.scoringSide) : [];
+      if (goalsTl.length) {
+        ["h", "a"].forEach((side) => {
+          const col = card.querySelector(".mc-scorers ." + side);
+          const by = [];
+          goalsTl.filter((t) => t.scoringSide === side).forEach((t) => {
+            const key = (t.player || "?") + (t.type === "own_goal" ? " (OG)" : "");
+            let row = by.find((r) => r.key === key);
+            if (!row) { row = { key: key, mins: [], mine: t.inSquad }; by.push(row); }
+            row.mins.push(t.minute + (t.type === "penalty_goal" ? " (P)" : ""));
+          });
+          by.forEach((r) => col.appendChild(el("<div" + (r.mine ? " class='mc-mine'" : "") + ">" + escapeHtml(r.key) + " " + escapeHtml(r.mins.join(", ")) + "</div>")));
+        });
+        return card;
+      }
       ["h", "a"].forEach((side) => {
         const col = card.querySelector(".mc-scorers ." + side);
         m.facts.filter((f) => f.scoringSide === side).forEach((f) => {
@@ -1609,7 +1647,97 @@
       });
       return card;
     }
+    function scorePill(t) { return "<span class='mc-sc'>" + t.homeScore + " – " + t.awayScore + "</span>"; }
+    function timelineCell(t) {
+      const name = "<b>" + escapeHtml(t.player || "") + "</b>";
+      if (t.type === "goal" || t.type === "penalty_goal" || t.type === "own_goal") {
+        const tag = t.type === "own_goal" ? " (OG)" : t.type === "penalty_goal" ? " (pen)" : (t.detail ? " <span class='sub'>" + escapeHtml(t.detail) + "</span>" : "");
+        return name + tag + " " + scorePill(t) + (t.secondary && t.type !== "own_goal" ? "<span class='sub'>Assist: " + escapeHtml(t.secondary) + "</span>" : "");
+      }
+      if (t.type === "sub") {
+        return "<span class='mc-in'>↑ " + escapeHtml(t.player || "") + "</span><span class='sub mc-out'>↓ " + escapeHtml(t.secondary || "") + "</span>";
+      }
+      if (t.type === "red") return name + (t.detail ? "<span class='sub'>" + escapeHtml(t.detail) + "</span>" : "");
+      if (t.type === "pen_missed") return name + "<span class='sub'>" + escapeHtml(t.detail || "Penalty missed") + "</span>";
+      return name;
+    }
+    const TL_ICONS = { goal: "⚽", penalty_goal: "⚽", own_goal: "⚽", yellow: "<span class='mc-card y'></span>", red: "<span class='mc-card r'></span>", sub: "⇅", pen_missed: "✖" };
+    function renderTimeline(m) {
+      const card = el("<section class='card mc-timeline'></section>");
+      card.appendChild(el("<p class='mc-note'>Timeline from ESPN, newest first. FPL points and bonus from the official FPL API.</p>"));
+      const items = m.espn.timeline.slice().reverse();
+      if (!items.length) card.appendChild(el("<p class='muted'>No events yet.</p>"));
+      items.forEach((t) => {
+        if (t.type === "ht" || t.type === "ft" || t.type === "ko") {
+          const lbl = t.type === "ht" ? "HT" : t.type === "ft" ? "FT" : "Kick-off";
+          const sc = t.type === "ko" ? "" : " · " + t.homeScore + " – " + t.awayScore;
+          card.appendChild(el("<div class='mc-marker mc-period'>" + lbl + sc + (t.type === "ht" && t.minute ? " <span class='muted'>(" + escapeHtml(t.minute) + ")</span>" : "") + "</div>"));
+          return;
+        }
+        // Goals sit on the side that scored (own goals included).
+        const side = t.scoringSide || t.side;
+        const cell = timelineCell(t);
+        const mine = t.inSquad ? " mine" : "";
+        card.appendChild(el("<div class='mc-ev mc-tl" + mine + "'><div class='h'>" + (side === "h" ? cell : "") +
+          "</div><div class='ic'><span class='mc-min'>" + escapeHtml(t.minute) + "</span>" + (TL_ICONS[t.type] || "") + "</div><div class='a'>" + (side === "a" ? cell : "") + "</div></div>"));
+      });
+      appendBonus(card, m);
+      return card;
+    }
+    function appendBonus(card, m) {
+      const bonus = el("<div class='mc-sec'><h4>Bonus points " + ({ confirmed: "(confirmed)", provisional: "(provisional, from FPL)" }[m.status.bonusSource] || "(projected from BPS)") + "</h4></div>");
+      if (!m.bonus.length) bonus.appendChild(el("<p class='muted'>No bonus yet.</p>"));
+      m.bonus.forEach((b) => {
+        bonus.appendChild(el("<div class='mc-bonus'><span" + (b.inSquad ? " class='mc-mine'" : "") + ">" + escapeHtml(b.player) +
+          " <span class='muted'>" + escapeHtml(b.side === "h" ? m.home.shortName : m.away.shortName) + " · " + b.bps + " BPS</span></span><span class='b'>+" + b.bonus + "</span></div>"));
+      });
+      card.appendChild(bonus);
+      const bps = el("<div class='mc-sec'><h4>Top BPS</h4></div>");
+      m.topBps.forEach((b) => {
+        bps.appendChild(el("<div class='mc-bonus'><span" + (b.inSquad ? " class='mc-mine'" : "") + ">" + escapeHtml(b.player) +
+          " <span class='muted'>" + escapeHtml(b.side === "h" ? m.home.shortName : m.away.shortName) + "</span></span><span class='b'>" + b.bps + "</span></div>"));
+      });
+      if (m.topBps.length) card.appendChild(bps);
+    }
+    function renderCommentary(m) {
+      const card = el("<section class='card'></section>");
+      card.appendChild(el("<p class='mc-note'>Live commentary from ESPN, newest first" + (m.live ? " · refreshes every 30s" : "") + ".</p>"));
+      const rows = (m.espn && m.espn.commentary) || [];
+      if (!rows.length) card.appendChild(el("<p class='muted'>No commentary yet.</p>"));
+      rows.forEach((c) => {
+        const key = /^(Goal!|Own Goal)/.test(c.text) ? " goal" : /red card/i.test(c.text) ? " red" : "";
+        card.appendChild(el("<div class='mc-cm" + key + "'><span class='mc-min'>" + escapeHtml(c.minute || "·") + "</span><span class='tx'>" + escapeHtml(c.text) + "</span></div>"));
+      });
+      return card;
+    }
+    function espnRow(p) {
+      const icons = "⚽".repeat(p.goals) + "👟".repeat(p.assists) +
+        (p.yellow ? " <span class='mc-card y'></span>" : "") + (p.red ? " <span class='mc-card r'></span>" : "");
+      const cap = p.captain ? "<span class='cap'>C</span>" : (p.viceCaptain ? "<span class='cap'>V</span>" : "");
+      const move = p.subbedOut ? " <span class='mc-out'>↓</span>" : p.subbedIn ? " <span class='mc-in'>↑</span>" : "";
+      const pts = p.fplPoints == null ? "<span class='muted'>–</span>" : (p.fplPoints + (p.projectedBonus ? " <small>+" + p.projectedBonus + "</small>" : ""));
+      const unused = !p.starter && !p.subbedIn ? " unused" : "";
+      return el("<div class='mc-pl" + (p.inSquad ? " mine" : "") + unused + "'><span class='pos'>" + escapeHtml(p.position) + "</span>" +
+        "<span class='nm'>" + escapeHtml(p.name) + cap + move + " " + icons + "</span>" +
+        "<span class='min'>" + (p.jersey ? "#" + escapeHtml(p.jersey) : "") + "</span><span class='pts'>" + pts + "</span></div>");
+    }
+    function renderEspnLineup(m) {
+      const card = el("<section class='card mc-lineup'></section>");
+      card.appendChild(el("<p class='mc-note'>Lineups from ESPN with live FPL points. Green = in the squad of entry " + escapeHtml(m.squadEntryId || matchEntryId()) + ".</p>"));
+      [[m.home, m.espn.homeLineup], [m.away, m.espn.awayLineup]].forEach(([team, lu]) => {
+        const sec = el("<div class='mc-sec'><h4>" + crest(team, 20) + escapeHtml(team.name) + (lu && lu.formation ? " <span class='mc-form'>" + escapeHtml(lu.formation) + "</span>" : "") + "</h4></div>");
+        if (!lu) { sec.appendChild(el("<p class='muted'>Lineup not available yet.</p>")); card.appendChild(sec); return; }
+        lu.starters.forEach((p) => sec.appendChild(espnRow(p)));
+        if (lu.subs.length) {
+          sec.appendChild(el("<div class='mc-subhead'>Substitutes</div>"));
+          lu.subs.forEach((p) => sec.appendChild(espnRow(p)));
+        }
+        card.appendChild(sec);
+      });
+      return card;
+    }
     function renderMatchFacts(m) {
+      if (m.espn && m.status.phase !== "upcoming") return renderTimeline(m);
       const card = el("<section class='card'></section>");
       card.appendChild(el("<p class='mc-note'>" + escapeHtml(m.minutesNote) + "</p>"));
       if (m.status.phase === "upcoming") {
@@ -1673,10 +1801,15 @@
     }
     function renderMatchStats(m) {
       const card = el("<section class='card'></section>");
-      card.appendChild(el("<p class='mc-note'>Team totals from FPL match stats. FPL has no possession or shot data.</p>"));
+      card.appendChild(el("<p class='mc-note'>" + (m.source === "ESPN" ? "Possession, shots and other match stats from ESPN; xG, BPS and FPL totals from the official FPL API." : "Team totals from FPL match stats. FPL has no possession or shot data.") + "</p>"));
       const head = el("<div class='mc-stat'><div class='row'><span class='hv'>" + crest(m.home, 22) + "</span><span class='lbl'></span><span class='av'>" + crest(m.away, 22) + "</span></div></div>");
       card.appendChild(head);
+      let lastSrc = null;
       m.stats.forEach((s) => {
+        if (m.source === "ESPN" && s.source !== lastSrc) {
+          card.appendChild(el("<div class='mc-subhead'>" + (s.source === "ESPN" ? "Match stats (ESPN)" : "FPL stats") + "</div>"));
+          lastSrc = s.source;
+        }
         const h = parseFloat(s.home) || 0, a = parseFloat(s.away) || 0;
         const tot = Math.abs(h) + Math.abs(a);
         const hp = tot ? Math.round(Math.abs(h) / tot * 100) : 50;

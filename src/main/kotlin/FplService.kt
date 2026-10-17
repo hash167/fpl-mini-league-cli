@@ -76,7 +76,8 @@ class FplService(
     private val api: FplClient,
     overallSnapshotPath: String? = null,
     pricesSnapshotPath: String? = DEFAULT_PRICES_SNAPSHOT_PATH,
-    private val clock: () -> Long = { System.currentTimeMillis() }
+    private val clock: () -> Long = { System.currentTimeMillis() },
+    private val espn: EspnSource? = null
 ) {
     private val pool = Executors.newFixedThreadPool(8)
     private val overallCache = LiveOverallSampleCache(
@@ -96,7 +97,16 @@ class FplService(
         } catch (_: Exception) {
             emptyList()
         }
-        return buildMatchDetail(fixture, gw, api.bootstrap(), api.eventLive(gw), gwFixtures, squad, entryId)
+        val bootstrap = api.bootstrap()
+        val base = buildMatchDetail(fixture, gw, bootstrap, api.eventLive(gw), gwFixtures, squad, entryId)
+        val enriched = espn?.let { source ->
+            try {
+                enrichWithEspn(source, base, bootstrap, squad)
+            } catch (_: Exception) {
+                null
+            }
+        }
+        return applyEspn(base, enriched)
     }
 
     fun currentGameweek(): Int {

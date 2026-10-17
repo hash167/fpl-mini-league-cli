@@ -3,6 +3,7 @@ package web
 import CachingFplClient
 import FplApi
 import FplService
+import HttpEspnSource
 import com.fasterxml.jackson.module.kotlin.kotlinModule
 import io.dropwizard.core.Application
 import io.dropwizard.core.setup.Bootstrap
@@ -27,7 +28,8 @@ class FplWebApplication : Application<FplWebConfiguration>() {
         val service = FplService(
             CachingFplClient(FplApi(baseUrl = configuration.fplBaseUrl)),
             overallSnapshotPath = snapshotPath,
-            pricesSnapshotPath = pricesPath
+            pricesSnapshotPath = pricesPath,
+            espn = if (System.getenv("FPL_ESPN_DISABLED") == "1") null else HttpEspnSource()
         )
         environment.healthChecks().register("fpl", FplHealthCheck(service))
         environment.jersey().register(FplApiExceptionMapper())

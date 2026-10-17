@@ -49,6 +49,9 @@ class UiAssetsContractTest {
         assertTrue(html.contains("overflow-x: hidden"), "no horizontal overflow")
         assertTrue(html.contains("setInterval(() => loadMatch(true)"), "live matches auto-refresh")
         val css = html.substring(html.indexOf("/* FotMob-style match view"), html.indexOf("</style>"))
+        assertTrue(html.contains("[\"commentary\", \"Commentary\"]"), "Commentary tab when ESPN is available")
+        assertTrue(html.contains("Source: ESPN + FPL") && html.contains("\"FPL only\""), "source note")
+        assertTrue(html.contains("function renderTimeline(m)"), "minute timeline")
         assertTrue(!Regex("background:\\s*#(0|1)[0-9a-f]{5}").containsMatchIn(css), "match view must not use dark backgrounds")
     }
 }
