@@ -1,7 +1,7 @@
-// FPL Live Tracker service worker, build 1.34.
+// FPL Live Tracker service worker, build 1.35.
 // Network only: this worker never caches pages, API JSON (/live, /leagues, /fixtures, /entries)
 // or event streams. It exists for installability/notifications and to purge any old caches.
-const BUILD = "1.34";
+const BUILD = "1.35";
 self.addEventListener("install", (event) => {
   event.waitUntil(self.skipWaiting());
 });
