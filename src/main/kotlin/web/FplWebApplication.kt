@@ -34,6 +34,7 @@ class FplWebApplication : Application<FplWebConfiguration>() {
         environment.jersey().register(HealthResource(service))
         environment.jersey().register(EntriesResource(service))
         environment.jersey().register(LeaguesResource(service))
+        environment.jersey().register(FixturesResource(service))
         environment.jersey().register(OverallResource(service))
         environment.jersey().register(LiveBoardResource(service))
         environment.jersey().register(LivePricesResource(service))
