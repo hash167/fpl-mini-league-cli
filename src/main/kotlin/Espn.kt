@@ -508,7 +508,7 @@ data class ScoreboardFixture(
     val source: String
 )
 
-const val APP_BUILD = "1.33"
+const val APP_BUILD = "1.34"
 
 data class ScoreboardResponse(
     val gameweek: Int,
