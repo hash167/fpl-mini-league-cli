@@ -42,8 +42,71 @@
       padding: 0.7rem 1rem;
     }
     header .row { display: flex; gap: 0.75rem; flex-wrap: wrap; align-items: center; }
+    header { padding: 0.55rem 1rem; }
+    .appbar { display: flex; align-items: center; gap: 0.5rem; max-width: 1400px; margin: 0 auto; min-width: 0; }
+    .appbar h1 { font-size: 1.02rem; font-weight: 750; white-space: nowrap; }
+    .status-pill {
+      display: inline-flex; align-items: center; gap: 0.35rem; flex: none;
+      font-size: 0.72rem; font-weight: 650; padding: 0.2rem 0.55rem; border-radius: 999px;
+      border: 1px solid var(--line); background: var(--bg-3); color: #526174;
+      font-variant-numeric: tabular-nums;
+    }
+    .status-pill #livePill::before { content: "·"; margin-right: 0.3rem; color: var(--rank-flat); }
+    .status-pill .sdot { width: 7px; height: 7px; border-radius: 50%; background: var(--rank-flat); display: inline-block; }
+    .status-pill.live { color: #047857; border-color: #a7f3d0; background: #ecfdf5; }
+    .status-pill.live .sdot { background: var(--accent-bright, #10b981); animation: sdotPulse 1.6s ease-out infinite; }
+    @keyframes sdotPulse { 0% { box-shadow: 0 0 0 0 rgba(16, 185, 129, 0.55); } 70% { box-shadow: 0 0 0 6px rgba(16, 185, 129, 0); } 100% { box-shadow: 0 0 0 0 rgba(16, 185, 129, 0); } }
+    .updated { margin-left: auto; font-size: 0.7rem; color: var(--muted); white-space: nowrap; font-variant-numeric: tabular-nums; min-width: 0; overflow: hidden; text-overflow: ellipsis; }
+    .icon-btn {
+      flex: none; width: 44px; height: 44px; padding: 0; border-radius: 50%;
+      display: inline-flex; align-items: center; justify-content: center; color: var(--muted);
+    }
+    .icon-btn svg { width: 18px; height: 18px; }
+    #notifyBtn.icon-btn.on { color: var(--accent); background: #ecfdf5; border-color: #a7f3d0; }
+    .ids { margin: 0 0 0.2rem; }
+    .ids-summary { display: none; align-items: center; justify-content: space-between; gap: 0.5rem; font-size: 0.78rem; color: var(--muted); padding: 0 0.15rem; }
+    .ids-summary b { color: var(--text); font-weight: 650; font-variant-numeric: tabular-nums; }
+    .ids.collapsed .ids-summary { display: flex; }
+    .ids.collapsed .ids-form { display: none; }
+    .link-btn { background: none; border: none; padding: 0 0.25rem; min-height: 44px; color: #047857; font-weight: 650; font-size: 0.78rem; }
+    .link-btn:hover { background: none; text-decoration: underline; }
+    .ids-form { display: grid; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); gap: 0.55rem 0.8rem; align-items: end; }
+    .ids-form .field { display: flex; flex-direction: column; gap: 0.2rem; min-width: 0; }
+    .ids-form label { font-size: 0.72rem; }
+    .ids-form .inline { display: flex; gap: 0.4rem; min-width: 0; }
+    .ids-form .inline input { flex: 1 1 auto; min-width: 0; }
+    .ids-form .inline button { flex: none; white-space: nowrap; }
+    .ids-form .inline input, .ids-form .inline button { min-height: 44px; }
+    .ids-form .inline button { min-width: 7.6rem; }
+    @media (max-width: 420px) { .u-word { display: none; } }
+    #idsBox button.primary, #idsBox button.primary:hover { background: #047857; border-color: #047857; color: #fff; }
+    .ids-summary, .ids-form label { color: #526174; }
+    .hero .k { color: #526174; }
+    .hero { padding: 0.95rem 1rem 0.85rem; }
+    .hero .k { display: block; font-size: 0.68rem; font-weight: 650; color: var(--card-muted); text-transform: uppercase; letter-spacing: 0.05em; }
+    .hero-head { display: flex; align-items: flex-start; justify-content: space-between; gap: 0.5rem; }
+    .hero-team { font-size: 1.12rem; font-weight: 750; color: var(--card-ink); line-height: 1.2; }
+    .hero-mgr { font-size: 0.78rem; color: var(--card-muted); margin-top: 0.1rem; }
+    .hero-chip { flex: none; font-size: 0.7rem; font-weight: 750; padding: 0.18rem 0.5rem; border-radius: 999px; background: #ecfdf5; color: #047857; border: 1px solid #a7f3d0; }
+    .hero-nums { display: grid; grid-template-columns: 1fr 1fr; gap: 0.6rem; margin-top: 0.8rem; }
+    .hero-nums > div { background: #f8fafc; border: 1px solid var(--line); border-radius: 12px; padding: 0.55rem 0.7rem; min-width: 0; }
+    .hero-nums b { display: block; font-size: 2rem; line-height: 1.1; font-weight: 800; color: var(--card-ink); font-variant-numeric: tabular-nums; letter-spacing: -0.01em; }
+    .hero-nums small, .hero-rank small { display: block; font-size: 0.72rem; color: var(--card-muted); font-variant-numeric: tabular-nums; }
+    .hero-nums .hitv { color: var(--rank-down); font-weight: 650; }
+    .hero-rank { margin-top: 0.75rem; padding: 0.6rem 0.7rem; border-radius: 12px; border: 1px solid #a7f3d0; background: linear-gradient(180deg, #f0fdf4, #ffffff); }
+    .hero-rank .rk { display: flex; align-items: baseline; gap: 0.5rem; flex-wrap: wrap; }
+    .hero-rank .rk b { font-size: 1.55rem; font-weight: 800; color: var(--card-ink); font-variant-numeric: tabular-nums; }
+    .move { font-size: 0.74rem; font-weight: 750; padding: 0.12rem 0.45rem; border-radius: 999px; font-variant-numeric: tabular-nums; white-space: nowrap; }
+    .move.up { color: #047857; background: #dcfce7; }
+    .move.down { color: #be123c; background: #ffe4e6; }
+    .move.flat { color: var(--card-muted); background: #f1f5f9; }
+    .hero-chips { display: flex; flex-wrap: wrap; gap: 0.35rem; margin-top: 0.7rem; }
+    .hero-chips span { font-size: 0.74rem; padding: 0.2rem 0.55rem; border-radius: 999px; background: #f1f5f9; border: 1px solid var(--line); color: var(--card-text); font-variant-numeric: tabular-nums; }
+    .hero-chips span b { color: var(--card-ink); }
+    .hero-chips span.good { background: #ecfdf5; border-color: #a7f3d0; }
+    .hero-foot { margin-top: 0.65rem; padding-top: 0.55rem; border-top: 1px solid var(--line); font-size: 0.72rem; color: var(--card-muted); font-variant-numeric: tabular-nums; }
     h1 { font-size: 1.05rem; margin: 0; letter-spacing: 0.02em; color: var(--text); }
-    h1 span { color: var(--accent); }
+    h1 span { color: #047857; }
     .pill {
       font-size: 0.75rem; padding: 0.15rem 0.45rem;
       border: 1px solid var(--line); border-radius: 999px;
@@ -154,7 +217,13 @@
     .card .scorers b { color: var(--accent); }
     .split { display: grid; grid-template-columns: minmax(0, 1fr); gap: 0.8rem; width: 100%; min-width: 0; max-width: 100%; }
     .split > * { min-width: 0; max-width: 100%; }
-    @media (min-width: 1100px) { .split.has-detail { grid-template-columns: minmax(0, 1fr) 360px; } }
+    @media (min-width: 1100px) { .split.has-detail { grid-template-columns: minmax(0, 1fr) minmax(420px, 36%); } }
+    /* Picks table: header must not stick inside the horizontally scrollable wrapper (it covered row 2). */
+    .picks-wrap table.live thead th { position: static; top: auto; }
+    table.live.players th:nth-child(2), table.live.players td:nth-child(2) { text-align: left; white-space: normal; }
+    table.live.players th:nth-child(3), table.live.players td:nth-child(3) { text-align: right; white-space: nowrap; }
+    /* 16px inputs: iOS zooms the page on focus for anything smaller. */
+    input, select { font-size: 16px; }
     .players th, .players td { text-align: left; }
     .players td.num, .players th.num { text-align: right; }
     /* Keep wide squad tables from expanding the league board (clips GW/Total on phones). */
@@ -571,22 +640,31 @@
 </head>
 <body>
   <header>
-    <div class="row">
+    <div class="appbar">
       <h1>FPL <span>Live</span> Tracker</h1>
-      <span class="pill" id="gwPill">GW —</span>
-      <span class="pill" id="livePill">idle</span>
-      <button type="button" id="notifyBtn">Notify off</button>
-      <span class="muted" id="refreshHint"></span>
+      <span class="status-pill" id="statusPill"><i class="sdot" aria-hidden="true"></i><span id="gwPill">GW —</span><span id="livePill">idle</span></span>
+      <span class="updated" id="refreshHint" aria-live="off"></span>
+      <button type="button" id="notifyBtn" class="icon-btn" aria-pressed="false" aria-label="Squad notifications off" title="Squad notifications"></button>
     </div>
   </header>
   <div id="toastHost" aria-live="polite"></div>
   <main>
-    <form class="bar" id="search">
-      <label>FPL ID <input name="entryId" inputmode="numeric" placeholder="e.g. 1234567" required></label>
-      <button class="primary" type="submit">Live rank</button>
-      <label>League ID <input name="leagueId" inputmode="numeric" placeholder="optional"></label>
-      <button type="button" id="openLeague">Open league</button>
-    </form>
+    <section class="ids" id="idsBox">
+      <div class="ids-summary">
+        <span class="ids-text">FPL ID <b id="idsEntry">—</b><span id="idsLeagueWrap"> · League <b id="idsLeague">—</b></span></span>
+        <button type="button" class="link-btn" id="idsEdit">Change IDs</button>
+      </div>
+      <form class="bar ids-form" id="search">
+        <div class="field">
+          <label for="entryIdInput">FPL ID</label>
+          <div class="inline"><input id="entryIdInput" name="entryId" inputmode="numeric" placeholder="e.g. 1234567" required><button class="primary" type="submit">Live rank</button></div>
+        </div>
+        <div class="field">
+          <label for="leagueIdInput">League ID</label>
+          <div class="inline"><input id="leagueIdInput" name="leagueId" inputmode="numeric" placeholder="optional"><button type="button" id="openLeague">Open league</button></div>
+        </div>
+      </form>
+    </section>
     <div id="app"></div>
     <div id="matchSheet" hidden role="dialog" aria-modal="true" aria-label="Match details"></div>
     <section class="card collapsed" id="homeBoard">
@@ -754,9 +832,8 @@
 
     function setPills(gw, live) {
       document.getElementById("gwPill").textContent = gw ? ("GW " + gw) : "GW —";
-      const pill = document.getElementById("livePill");
-      pill.textContent = live ? "LIVE" : "not live";
-      pill.className = "pill" + (live ? " live" : "");
+      document.getElementById("livePill").textContent = live ? "LIVE" : "not live";
+      document.getElementById("statusPill").classList.toggle("live", !!live);
     }
 
     function persistView() {
@@ -775,7 +852,33 @@
       const leagueInput = document.querySelector('input[name="leagueId"]');
       if (entryInput && state.entryId) entryInput.value = state.entryId;
       if (leagueInput) leagueInput.value = (state.league && state.league.leagueId) || "";
+      paintIds();
     }
+    // IDs form collapses to a one-line summary once an entry is loaded; "Change IDs" reopens it.
+    function paintIds() {
+      const box = document.getElementById("idsBox");
+      if (!box) return;
+      document.getElementById("idsEntry").textContent = state.entryId || "—";
+      const lid = state.league && state.league.leagueId;
+      document.getElementById("idsLeague").textContent = lid || "—";
+      document.getElementById("idsLeagueWrap").hidden = !lid;
+      box.classList.toggle("collapsed", !!state.entryId && !state.editIds);
+    }
+    document.getElementById("idsEdit").addEventListener("click", () => {
+      state.editIds = true; paintIds();
+      const inp = document.querySelector('input[name="entryId"]'); if (inp) inp.focus();
+    });
+    // "Updated Xs ago" in the app bar (replaces the static auto-refresh hint).
+    function markUpdated() { state.updatedAt = Date.now(); paintUpdated(); }
+    function paintUpdated() {
+      const node = document.getElementById("refreshHint");
+      if (!node) return;
+      if (!state.updatedAt) { node.textContent = ""; return; }
+      const sec = Math.max(0, Math.round((Date.now() - state.updatedAt) / 1000));
+      node.innerHTML = "<span class='u-word'>Updated </span>" + (sec < 60 ? sec + "s" : Math.round(sec / 60) + "m") + " ago";
+      node.title = state.refreshLive ? "Auto-refreshing while matches are live" : "Fixtures not started";
+    }
+    setInterval(paintUpdated, 5000);
 
 
     function notifySupported() {
@@ -788,8 +891,13 @@
       const btn = document.getElementById("notifyBtn");
       if (!btn) return;
       const on = !!state.notify;
-      btn.textContent = on ? "Notify on" : "Notify off";
+      btn.innerHTML = on
+        ? "<svg viewBox='0 0 24 24' fill='currentColor' aria-hidden='true'><path d='M12 22a2.5 2.5 0 0 0 2.45-2h-4.9A2.5 2.5 0 0 0 12 22zm7-6V11a7 7 0 0 0-5.5-6.84V3.5a1.5 1.5 0 0 0-3 0v.66A7 7 0 0 0 5 11v5l-2 2v1h18v-1l-2-2z'/></svg>"
+        : "<svg viewBox='0 0 24 24' fill='none' stroke='currentColor' stroke-width='1.8' stroke-linecap='round' aria-hidden='true'><path d='M18 16v-5a6 6 0 0 0-9.7-4.7M6.2 8.6A6 6 0 0 0 6 11v5l-2 2h13'/><path d='M10 20a2 2 0 0 0 4 0'/><path d='M3 3l18 18'/></svg>";
       btn.classList.toggle("on", on);
+      btn.setAttribute("aria-pressed", on ? "true" : "false");
+      btn.setAttribute("aria-label", on ? "Squad notifications on" : "Squad notifications off");
+      btn.title = on ? "Squad notifications on" : "Squad notifications off";
     }
     function showToast(body, hint) {
       const host = document.getElementById("toastHost");
@@ -882,7 +990,8 @@
 
     function scheduleRefresh() {
       const live = !!(state.board && state.board.live) || !!(state.entry && state.entry.live) || !!(state.league && state.league.live);
-      document.getElementById("refreshHint").textContent = live ? "auto-refresh 90s" : "fixtures not started";
+      state.refreshLive = live;
+      paintUpdated();
       if (!live) { clearInterval(state.timer); state.timer = null; return; }
       // Keep an existing timer: the 30s notify poll calls loadEntry -> scheduleRefresh, and resetting
       // the 90s interval on every call meant it never fired (league + fixtures strip froze).
@@ -899,11 +1008,13 @@
       const fd = new FormData(e.target);
       const id = Number(fd.get("entryId"));
       if (!id) return;
+      state.editIds = false;
       await loadEntry(id);
     });
     document.getElementById("openLeague").addEventListener("click", async () => {
       const id = Number(document.querySelector('input[name="leagueId"]').value);
       if (!id) return;
+      state.editIds = false;
       await loadLeague(id);
     });
 
@@ -944,6 +1055,7 @@
           gameweek: entry.gameweek
         };
         setPills(entry.gameweek, entry.live);
+        markUpdated();
         persistView();
         render();
         scheduleRefresh();
@@ -961,6 +1073,7 @@
         state.league = data;
         state.gameweek = data.gameweek;
         setPills(data.gameweek, data.live);
+        markUpdated();
         persistView();
         render();
         scheduleRefresh();
@@ -1006,34 +1119,45 @@
 
     function renderEntryCard() {
       const e = state.entry;
-      const card = el("<section class='card'></section>");
-      card.appendChild(el("<div><strong>" + escapeHtml(e.managerName) + "</strong> · " +
-        escapeHtml(e.teamName) + " <span class='muted'>#" + e.entryId + "</span></div>"));
-      const stats = el("<div class='stats'></div>");
-      const items = [
-        ["GW net", e.gwNet],
-        ["GW gross", e.gwGross],
-        ["Hit", e.transferCost ? ("-" + e.transferCost) : "0"],
-        ["Live total", e.liveTotal],
-        ["Proj. bonus", e.projectedBonus],
-        ["Confirmed bonus", e.confirmedBonus],
-        ["Remaining", e.playersRemaining],
-        ["Captain", e.captainStatus || "—"],
-        ["Chip", e.activeChip || "—"],
-        ["Overall rank", fmtRank(e.overallRank) + " (official)"],
-        ["Live overall", liveOverallHtml(e)],
-        ["Sample age", fmtAge(e.liveOverallSampleAgeSeconds)],
-        ["Value", fmtMoney(e.teamValue)],
-        ["Bank", fmtMoney(e.bank)],
-        ["Free transfers", fmt(e.freeTransfers)],
-        ["Autosubs", e.autosubsApplied]
-      ];
-      items.forEach(([k, v]) => {
-        const raw = String(v == null ? "—" : v);
-        const safe = raw.indexOf("<span") >= 0 ? raw : escapeHtml(raw);
-        stats.appendChild(el("<div class='stat'><span>" + k + "</span><b>" + safe + "</b></div>"));
-      });
-      card.appendChild(stats);
+      const card = el("<section class='card hero' id='entryHero'></section>");
+      const hit = Number(e.transferCost) || 0;
+      card.appendChild(el("<div class='hero-head'><div><div class='hero-team'>" + escapeHtml(e.teamName || "") + "</div>" +
+        "<div class='hero-mgr'>" + escapeHtml(e.managerName || "") + " · #" + e.entryId + "</div></div>" +
+        (e.activeChip ? "<span class='hero-chip'>" + escapeHtml(e.activeChip) + "</span>" : "") + "</div>"));
+      card.appendChild(el("<div class='hero-nums'>" +
+        "<div><span class='k'>GW points</span><b>" + fmt(e.gwNet) + "</b>" +
+          (hit > 0 ? "<small>" + fmt(e.gwGross) + " gross · <span class='hitv'>−" + hit + " hit</span></small>" : "<small>GW " + fmt(e.gameweek) + (e.live ? " · live" : "") + "</small>") + "</div>" +
+        "<div><span class='k'>Live total</span><b>" + fmt(e.liveTotal) + "</b>" +
+          (e.officialTotal != null ? "<small>Official " + fmt(e.officialTotal) + "</small>" : "") + "</div>" +
+      "</div>"));
+      const est = e.liveOverallEstimateAvailable && e.liveOverallRankEstimate != null;
+      const L = Number(e.liveOverallRankEstimate), S = Number(e.startOfGwOverallRank);
+      let move = "";
+      if (est && L && S) {
+        const d = S - L;
+        move = d === 0 ? "<span class='move flat'>No change since GW start</span>"
+          : "<span class='move " + (d > 0 ? "up" : "down") + "' title='Live estimate vs your rank at the start of the GW (" + fmtRank(S) + ")'>" + (d > 0 ? "▲ " : "▼ ") + Math.abs(d).toLocaleString() + " since GW start</span>";
+      }
+      const sub = [];
+      if (est) sub.push("Official " + fmtRank(e.overallRank));
+      if (S) sub.push("GW start " + fmtRank(S));
+      card.appendChild(el("<div class='hero-rank'><span class='k'>" + (est ? "Live overall rank · estimate" : "Overall rank · official") + "</span>" +
+        "<div class='rk'><b>" + (est ? fmtRank(L) : fmtRank(e.overallRank)) + "</b>" + move + "</div>" +
+        (sub.length ? "<small>" + sub.join(" · ") + "</small>" : "") + "</div>"));
+      const chips = [];
+      const cb = Number(e.confirmedBonus) || 0, pb = Number(e.projectedBonus) || 0;
+      if (cb || pb) chips.push("<span class='good'>Bonus <b>" + cb + "</b>" + (pb ? " +" + pb + " proj" : "") + "</span>");
+      if (e.playersRemaining != null) chips.push("<span><b>" + fmt(e.playersRemaining) + "</b> " + (Number(e.playersRemaining) === 1 ? "player" : "players") + " left</span>");
+      if (e.captainStatus) chips.push("<span" + (e.captainStatus === "played" ? " class='good'" : "") + ">Captain <b>" + escapeHtml(e.captainStatus) + "</b></span>");
+      if (e.activeChip) chips.push("<span>Chip <b>" + escapeHtml(e.activeChip) + "</b></span>");
+      if (chips.length) card.appendChild(el("<div class='hero-chips'>" + chips.join("") + "</div>"));
+      const foot = [];
+      if (e.teamValue != null) foot.push(fmtMoney(e.teamValue) + " value");
+      if (e.bank != null) foot.push(fmtMoney(e.bank) + " bank");
+      if (e.freeTransfers != null) foot.push(fmt(e.freeTransfers) + " FT");
+      if (Number(e.autosubsApplied) > 0) foot.push(e.autosubsApplied + " autosub" + (Number(e.autosubsApplied) === 1 ? "" : "s"));
+      if (est && e.liveOverallSampleAgeSeconds != null) foot.push("rank sample " + fmtAge(e.liveOverallSampleAgeSeconds));
+      if (foot.length) card.appendChild(el("<div class='hero-foot'>" + escapeHtml(foot.join(" · ")) + "</div>"));
       return card;
     }
 
@@ -1072,7 +1196,7 @@
 
     // ---- live GW scoreboard for the fixtures strip: 10s refresh while any match is live ----
     const SCOREBOARD_POLL_MS = 10000;
-    const APP_BUILD = "1.36";
+    const APP_BUILD = "1.37";
     function scoreboardFor(id) {
       const sb = state.scoreboard;
       if (!sb || sb.gameweek !== state.gameweek) return null;
@@ -1092,7 +1216,14 @@
       return (state.league && state.league.fixtures) || (state.entry && state.entry.fixtures) || [];
     }
     function fxClock(fx) {
-      return fx.clock && fx.state !== "pre" ? fx.clock : (fx.finished ? "FT" : (fx.started ? (fx.minutes + "'") : (fx.kickoffTime || "").replace("T", " ").slice(0, 16)));
+      return fx.clock && fx.state !== "pre" ? fx.clock : (fx.finished ? "FT" : (fx.started ? (fx.minutes + "'") : fxKickoff(fx.kickoffTime)));
+    }
+    // Upcoming kickoff in the browser's local time, e.g. "Sun 8:30 AM" (no raw UTC).
+    function fxKickoff(iso) {
+      if (!iso) return "TBC";
+      const d = new Date(iso);
+      if (isNaN(d)) return "TBC";
+      return d.toLocaleString([], { weekday: "short", hour: "numeric", minute: "2-digit" });
     }
     // Patch scores/clocks in the existing strip: no re-render, no scroll jump.
     function updateStripInPlace() {
@@ -1670,6 +1801,13 @@
       } catch (e) {}
       if (entryId) document.querySelector('input[name="entryId"]').value = entryId;
       if (leagueId) document.querySelector('input[name="leagueId"]').value = leagueId;
+      if (entryId) {
+        // Saved IDs: start with the form collapsed so the page doesn't jump once the entry loads.
+        document.getElementById("idsEntry").textContent = entryId;
+        document.getElementById("idsLeague").textContent = leagueId || "—";
+        document.getElementById("idsLeagueWrap").hidden = !leagueId;
+        document.getElementById("idsBox").classList.add("collapsed");
+      }
       await Promise.all([
         loadBoard(),
         entryId ? loadEntry(entryId) : Promise.resolve()
