@@ -505,10 +505,18 @@ data class ScoreboardFixture(
     val started: Boolean,
     val finished: Boolean,
     val minutes: Int,
-    val source: String
+    val source: String,
+    /** ESPN has published starting lineups (pre-match only). */
+    val lineups: Boolean = false
 )
 
-const val APP_BUILD = "1.35"
+/** True when an ESPN summary carries at least one starter in its rosters. */
+fun espnHasLineups(summary: JsonObject?): Boolean =
+    summary?.arr("rosters")?.mapNotNull { it as? JsonObject }?.any { r ->
+        r.arr("roster").mapNotNull { it as? JsonObject }.any { it.bool("starter") == true }
+    } == true
+
+const val APP_BUILD = "1.36"
 
 data class ScoreboardResponse(
     val gameweek: Int,
@@ -547,7 +555,13 @@ fun buildScoreboard(gameweek: Int, fixtures: List<JsonObject>, bootstrap: JsonOb
         val comp = ev.arr("competitions").firstOrNull() as? JsonObject ?: return@mapNotNull fplRow
         val type = ev.obj("status").obj("type")
         val state = type.str("state") ?: return@mapNotNull fplRow
-        if (state == "pre") return@mapNotNull fplRow
+        if (state == "pre") {
+            // Lineups are usually out ~1h before kickoff; only look inside a 3h window (summary cached 60s pre-match).
+            val untilKo = Duration.between(java.time.Instant.now(), ko)
+            val lineups = !untilKo.isNegative && untilKo <= Duration.ofHours(3) &&
+                runCatching { espnHasLineups(espn.summary(eventId)) }.getOrDefault(false)
+            return@mapNotNull fplRow.copy(lineups = lineups)
+        }
         fun score(side: String) = comp.arr("competitors").mapNotNull { it as? JsonObject }
             .firstOrNull { it.str("homeAway") == side }?.str("score")?.toIntOrNull()
         anyEspn = true

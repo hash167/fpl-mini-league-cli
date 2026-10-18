@@ -158,6 +158,7 @@
     .players th, .players td { text-align: left; }
     .players td.num, .players th.num { text-align: right; }
     /* Keep wide squad tables from expanding the league board (clips GW/Total on phones). */
+    .fx-lu { color: var(--accent); font-weight: 700; }
     .picks-wrap { width: 100%; min-width: 0; max-width: 100%; overflow-x: auto; -webkit-overflow-scrolling: touch; }
     table.live.players { width: 100%; min-width: 0; }
     .tag { font-size: 0.7rem; color: var(--muted); }
@@ -1071,7 +1072,7 @@
 
     // ---- live GW scoreboard for the fixtures strip: 10s refresh while any match is live ----
     const SCOREBOARD_POLL_MS = 10000;
-    const APP_BUILD = "1.35";
+    const APP_BUILD = "1.36";
     function scoreboardFor(id) {
       const sb = state.scoreboard;
       if (!sb || sb.gameweek !== state.gameweek) return null;
@@ -1116,7 +1117,16 @@
         if (clk && clk.textContent !== text) clk.textContent = text;
         node.classList.toggle("live", f.started && !f.finished);
         node.classList.toggle("done", !!f.finished);
+        paintLineupTag(node, row.lineups && !f.started);
       });
+    }
+    function paintLineupTag(node, on) {
+      let tag = node.querySelector(".fx-lu");
+      if (on && !tag) {
+        tag = el("<span class='fx-lu'> · Lineups ✓</span>");
+        const m = node.querySelector(".muted");
+        if (m) m.insertBefore(tag, m.querySelector(".fx-open") ? m.querySelector(".fx-open").previousSibling : null);
+      } else if (!on && tag) tag.remove();
     }
     function applyScoreboard(sb) {
       if (!sb || sb.gameweek !== state.gameweek) return;
@@ -1193,8 +1203,14 @@
       if (!live || !fixtures.length) {
         stopScoreboardStream();
         if (state.scoreboardTimer) { clearInterval(state.scoreboardTimer); state.scoreboardTimer = null; }
+        // A kickoff within 3h: refresh the scoreboard every 60s so lineups and the kickoff itself appear.
+        const now = Date.now();
+        const soon = fixtures.some((f) => !f.started && f.kickoffTime && Date.parse(f.kickoffTime) - now < 3 * 3600e3 && Date.parse(f.kickoffTime) - now > -600e3);
+        if (soon && !state.sbPreTimer) state.sbPreTimer = setInterval(loadScoreboard, 60000);
+        if (!soon && state.sbPreTimer) { clearInterval(state.sbPreTimer); state.sbPreTimer = null; }
         return;
       }
+      if (state.sbPreTimer) { clearInterval(state.sbPreTimer); state.sbPreTimer = null; }
       if (!state.scoreboardTimer) state.scoreboardTimer = setInterval(scoreboardWatchdog, SCOREBOARD_POLL_MS);
       if (state.sbStream && state.sbStream.__gw !== state.gameweek) stopScoreboardStream();
       startScoreboardStream();
@@ -1254,6 +1270,8 @@
         node.addEventListener("keydown", (ev) => { if (ev.key === "Enter" || ev.key === " ") { ev.preventDefault(); openMatch(fx.id); } });
         if (fx.started && !fx.finished) node.classList.add("live");
         if (fx.finished) node.classList.add("done");
+        const sbRow = scoreboardFor(fx.id);
+        paintLineupTag(node, !!(sbRow && sbRow.lineups && !fx.started));
         const mine = playersInFixture(fx);
         if (mine.length) {
           const list = el("<div class='fx-players'></div>");
@@ -1732,6 +1750,7 @@
       matchState.streamDisabled = false;
       matchState.id = fixtureId;
       matchState.tab = "facts";
+      matchState.tabAuto = true;
       matchState.data = null;
       matchState.error = null;
       const sheet = document.getElementById("matchSheet");
@@ -1784,20 +1803,29 @@
     function matchQuery() {
       return "?entryId=" + matchEntryId() + (state.gameweek ? "&gameweek=" + state.gameweek : "");
     }
+    const MATCH_PRE_POLL_MS = 60000;
     function scheduleMatchUpdates() {
       const live = !!(matchState.data && matchState.data.live);
+      const pre = !!(matchState.data && matchState.data.status && matchState.data.status.phase === "upcoming");
       if (!live || matchState.id == null) {
         stopMatchStream();
+        if (matchState.id != null && pre) {
+          // Before kickoff: re-check every 60s so lineups (and kickoff itself) show up without a reload.
+          if (matchState.timer && matchState.timerMs !== MATCH_PRE_POLL_MS) { clearInterval(matchState.timer); matchState.timer = null; }
+          if (!matchState.timer) { matchState.timer = setInterval(() => loadMatch(true), MATCH_PRE_POLL_MS); matchState.timerMs = MATCH_PRE_POLL_MS; }
+          return;
+        }
         clearInterval(matchState.timer);
         matchState.timer = null;
         return;
       }
+      if (matchState.timer && matchState.timerMs === MATCH_PRE_POLL_MS) { clearInterval(matchState.timer); matchState.timer = null; }
       if (!matchState.streamDisabled && typeof EventSource !== "undefined") {
         startMatchStream();
         if (matchState.streamOpen) { clearInterval(matchState.timer); matchState.timer = null; }
         return;
       }
-      if (!matchState.timer) matchState.timer = setInterval(() => loadMatch(true), MATCH_POLL_MS);
+      if (!matchState.timer) { matchState.timer = setInterval(() => loadMatch(true), MATCH_POLL_MS); matchState.timerMs = MATCH_POLL_MS; }
     }
     function applyMatchPayload(raw) {
       let data;
@@ -1843,7 +1871,7 @@
           // EventSource gave up or keeps failing: fall back to polling.
           matchState.streamDisabled = matchState.streamFailures >= 3;
           stopMatchStream();
-          if (!matchState.timer) matchState.timer = setInterval(() => loadMatch(true), MATCH_POLL_MS);
+          if (!matchState.timer) { matchState.timer = setInterval(() => loadMatch(true), MATCH_POLL_MS); matchState.timerMs = MATCH_POLL_MS; }
         }
       });
     }
@@ -1885,10 +1913,12 @@
       if (m.espn) tabList.push(["commentary", "Commentary"]);
       if (m.table && m.table.rows && m.table.rows.length) tabList.push(["table", "Table"]);
       if (!tabList.some(([k]) => k === matchState.tab)) matchState.tab = "facts";
+      // Pre-match with confirmed lineups: open on the Lineup tab (until the user picks a tab).
+      if (matchState.tabAuto && m.status.phase === "upcoming" && hasEspnLineups(m)) matchState.tab = "lineup";
       tabList.forEach(([k, label]) => {
         const b = el("<button type='button'>" + label + "</button>");
         if (matchState.tab === k) b.classList.add("active");
-        b.onclick = () => { matchState.tab = k; renderMatch(); };
+        b.onclick = () => { matchState.tab = k; matchState.tabAuto = false; renderMatch(); };
         tabs.appendChild(b);
       });
       wrap.appendChild(tabs);
@@ -2030,9 +2060,14 @@
         "<span class='nm'>" + escapeHtml(p.name) + cap + move + " " + icons + "</span>" +
         "<span class='min'>" + (p.jersey ? "#" + escapeHtml(p.jersey) : "") + "</span><span class='pts'>" + pts + "</span></div>");
     }
+    function hasEspnLineups(m) {
+      const e = m && m.espn;
+      return !!e && [e.homeLineup, e.awayLineup].some((lu) => lu && lu.starters && lu.starters.length);
+    }
     function renderEspnLineup(m) {
       const card = el("<section class='card mc-lineup'></section>");
-      card.appendChild(el("<p class='mc-note'>Lineups from ESPN with live FPL points. Green = in the squad of entry " + escapeHtml(m.squadEntryId || matchEntryId()) + ".</p>"));
+      const pre = m.status.phase === "upcoming";
+      card.appendChild(el("<p class='mc-note'>" + (pre && hasEspnLineups(m) ? "<b>Lineups confirmed</b> (ESPN) · points from kickoff. " : "Lineups from ESPN with live FPL points. ") + "Green = in the squad of entry " + escapeHtml(m.squadEntryId || matchEntryId()) + ".</p>"));
       [[m.home, m.espn.homeLineup], [m.away, m.espn.awayLineup]].forEach(([team, lu]) => {
         const sec = el("<div class='mc-sec'><h4>" + crest(team, 20) + escapeHtml(team.name) + (lu && lu.formation ? " <span class='mc-form'>" + escapeHtml(lu.formation) + "</span>" : "") + "</h4></div>");
         if (!lu) { sec.appendChild(el("<p class='muted'>Lineup not available yet.</p>")); card.appendChild(sec); return; }

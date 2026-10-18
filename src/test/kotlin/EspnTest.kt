@@ -214,4 +214,11 @@ class ScoreboardTest {
         assertEquals("in", bre.state)
         assertEquals("FPL", buildScoreboard(7, gw7, bootstrap, null).source)
     }
+
+    @Test
+    fun `pre-match summary with published rosters reports lineups`() {
+        assertTrue(espnHasLineups(obj("summary_401878769_pre.json")))
+        assertFalse(espnHasLineups(JsonObject(emptyMap())))
+        assertFalse(espnHasLineups(null))
+    }
 }
