@@ -93,10 +93,20 @@ class FplService(
     }
 
     fun matchDetail(fixtureId: Int, gameweek: Int?, entryId: Int?): MatchDetail {
-        val gw = gameweek ?: currentGameweek()
-        val gwFixtures = api.fixtures(gw)
-        val fixture = gwFixtures.firstOrNull { it.int("id") == fixtureId }
-            ?: throw FplApiException("Fixture $fixtureId not found in GW $gw", 404)
+        var gw = gameweek ?: currentGameweek()
+        var gwFixtures = api.fixtures(gw)
+        var fixture = gwFixtures.firstOrNull { it.int("id") == fixtureId }
+        if (fixture == null) {
+            // The requested/current GW does not contain this fixture (e.g. a previous-GW fixture opened
+            // from a stale link): resolve its real gameweek from the season fixture list.
+            val actualGw = api.allFixtures().firstOrNull { it.int("id") == fixtureId }?.int("event")
+            if (actualGw != null && actualGw != gw) {
+                gw = actualGw
+                gwFixtures = api.fixtures(gw)
+                fixture = gwFixtures.firstOrNull { it.int("id") == fixtureId }
+            }
+        }
+        if (fixture == null) throw FplApiException("Fixture $fixtureId not found in GW $gw", 404)
         val squad = if (entryId == null) emptyList() else try {
             api.entryPicks(entryId, gw)
         } catch (_: Exception) {

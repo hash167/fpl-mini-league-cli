@@ -4,6 +4,7 @@ import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.jsonObject
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import kotlin.test.assertFailsWith
 import kotlin.test.assertFalse
 import kotlin.test.assertNotNull
 import kotlin.test.assertNull
@@ -153,6 +154,19 @@ class EspnTest {
         assertEquals("51'", m.status.label)
         assertTrue(m.live)
         assertTrue(m.espn!!.awayLineup!!.starters.any { it.inSquad }, "Virgil highlighted")
+    }
+
+    @Test
+    fun `match for another gameweek resolves its real gameweek instead of 404`() {
+        val fake = FakeFplClient(bootstrap = bootstrap, eventLiveJson = live, fixtureList = fixtures, allFixtureList = fixtures)
+        val gw7Only = object : FplClient by fake {
+            override fun fixtures(eventId: Int): List<kotlinx.serialization.json.JsonObject> = if (eventId == 7) fixtures else emptyList()
+        }
+        val svc = FplService(gw7Only, pricesSnapshotPath = null)
+        // Client asks for GW 8 (current) but the fixture belongs to GW 7.
+        assertEquals(7, svc.matchDetail(64, 8, null).gameweek)
+        val e = assertFailsWith<FplApiException> { svc.matchDetail(999999, 8, null) }
+        assertEquals(404, e.statusCode)
     }
 
     @Test

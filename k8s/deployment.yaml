@@ -23,7 +23,7 @@ spec:
         fsGroup: 65534
       containers:
         - name: fpl-web
-          image: docker.io/library/fpl-web:1.37
+          image: docker.io/library/fpl-web:1.38
           imagePullPolicy: IfNotPresent
           ports:
             - name: http
@@ -56,31 +56,48 @@ spec:
             - name: OTEL_BSP_SCHEDULE_DELAY
               value: "2000"
             - name: OTEL_RESOURCE_ATTRIBUTES
-              value: service.namespace=fpl,service.version=1.37
+              value: service.namespace=fpl,service.version=1.38
+            # entrypoint.sh prepends -javaagent:/app/opentelemetry-javaagent.jar to this value.
+            # Default heap was 25% of 512Mi = 128Mi, which the working set (~90Mi after 6 min) exceeded.
+            - name: JAVA_TOOL_OPTIONS
+              value: >-
+                -XX:MaxRAMPercentage=70
+                -XX:InitialRAMPercentage=25
+                -XX:+HeapDumpOnOutOfMemoryError
+                -XX:HeapDumpPath=/app/data/dumps
+                -XX:+ExitOnOutOfMemoryError
           volumeMounts:
             - name: overall-data
               mountPath: /app/data
           resources:
             requests:
               cpu: 100m
-              memory: 256Mi
+              memory: 512Mi
             limits:
               cpu: 500m
-              memory: 512Mi
+              memory: 1Gi
+          # /health answers from memory only (no FPL/ESPN calls, no cache locks).
+          startupProbe:
+            httpGet:
+              path: /health
+              port: http
+            periodSeconds: 5
+            timeoutSeconds: 5
+            failureThreshold: 48
           readinessProbe:
             httpGet:
               path: /health
               port: http
-            initialDelaySeconds: 20
-            timeoutSeconds: 5
             periodSeconds: 10
+            timeoutSeconds: 5
+            failureThreshold: 3
           livenessProbe:
             httpGet:
               path: /health
               port: http
-            initialDelaySeconds: 40
-            timeoutSeconds: 5
             periodSeconds: 20
+            timeoutSeconds: 10
+            failureThreshold: 6
       volumes:
         - name: overall-data
           hostPath:

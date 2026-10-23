@@ -60,7 +60,7 @@ class UiAssetsContractTest {
     @Test
     fun `fixtures open a light FotMob-style match view`() {
         val html = Files.readString(Paths.get("src/main/resources/assets/index.html"))
-        assertTrue(html.contains("openMatch(fx.id)"), "fixture tiles must open the match view")
+        assertTrue(html.contains("openMatch(fx.id, stripGameweek())"), "fixture tiles must open the match view")
         assertTrue(html.contains("id=\"matchSheet\""), "match sheet container must exist")
         assertTrue(html.contains("\"/fixtures/\" + id + \"/match\""), "match view must load the match endpoint")
         assertTrue(html.contains("[\"facts\", \"Facts\"], [\"lineup\", \"Lineup\"], [\"stats\", \"Stats\"]"), "Facts/Lineup/Stats tabs")
@@ -82,7 +82,11 @@ class UiAssetsContractTest {
         assertTrue(html.contains("if (state.timer) return;"), "90s refresh must not be reset by the notify poll")
         assertTrue(html.contains("function freshestScore(fx)"), "strip never shows an older score than the newest data")
         assertTrue(html.contains("window.addEventListener(\"pageshow\""), "resume handling for iOS Home Screen apps")
-        assertTrue(html.contains("const APP_BUILD = \"1.37\";"), "embedded build for self-reload")
+        assertTrue(html.contains("const APP_BUILD = \"1.38\";"), "embedded build for self-reload")
+        assertTrue(html.contains("data.error || data.message || (\"HTTP \" + res.status)"), "server errors show the message, not a bare HTTP code")
+        assertTrue(html.contains("class='mc-retry'"), "match error has a retry button")
+        assertTrue(html.contains("openMatch(fx.id, stripGameweek())"), "fixture opens carry their gameweek")
+        assertTrue(html.contains("\"&gameweek=\" + (matchState.gw || state.gameweek)"), "match query sends gameweek")
         val sw = Files.readString(Paths.get("src/main/resources/assets/sw.js"))
         assertTrue(!sw.contains("addEventListener(\"fetch\"") && sw.contains("caches.delete"), "service worker is network-only and purges caches")
         assertTrue(html.contains("addEventListener(\"visibilitychange\""), "refresh on visibility change")

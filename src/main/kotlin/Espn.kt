@@ -41,6 +41,10 @@ class HttpEspnSource(
     private val json = Json { ignoreUnknownKeys = true }
 
     private data class Entry(val value: JsonObject?, val expiresAt: Long)
+    private companion object {
+        const val STALE_KEEP_MS = 30 * 60_000L
+        const val MAX_CACHE_KEYS = 24
+    }
     private val cache = ConcurrentHashMap<String, Entry>()
     private val failedUntil = ConcurrentHashMap<String, Long>()
     @Volatile private var consecutiveFailures = 0
@@ -83,8 +87,24 @@ class HttpEspnSource(
         consecutiveFailures = 0
         failedUntil.remove(key)
         cache[key] = Entry(fresh, now + ttl(fresh))
+        evict(now)
         return fresh
     }
+
+    /**
+     * Keep the cache bounded: drop entries that expired more than [STALE_KEEP_MS] ago (stale data is
+     * only useful as a fallback while ESPN is failing) and cap the key count, oldest expiry first.
+     */
+    private fun evict(now: Long) {
+        cache.entries.removeIf { it.value.expiresAt + STALE_KEEP_MS < now }
+        failedUntil.entries.removeIf { it.value < now }
+        val extra = cache.size - MAX_CACHE_KEYS
+        if (extra > 0) {
+            cache.entries.sortedBy { it.value.expiresAt }.take(extra).forEach { cache.remove(it.key) }
+        }
+    }
+
+    internal fun cacheSize(): Int = cache.size
 
     private fun get(url: String): JsonObject? {
         val request = HttpRequest.newBuilder(URI.create(url))
@@ -516,7 +536,7 @@ fun espnHasLineups(summary: JsonObject?): Boolean =
         r.arr("roster").mapNotNull { it as? JsonObject }.any { it.bool("starter") == true }
     } == true
 
-const val APP_BUILD = "1.37"
+const val APP_BUILD = "1.38"
 
 data class ScoreboardResponse(
     val gameweek: Int,

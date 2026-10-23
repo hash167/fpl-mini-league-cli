@@ -818,7 +818,7 @@
         const text = await res.text();
         let data;
         try { data = text ? JSON.parse(text) : {}; } catch { data = { error: text }; }
-        if (!res.ok) throw new Error(data.error || ("HTTP " + res.status));
+        if (!res.ok) throw new Error(data.error || data.message || ("HTTP " + res.status));
         return data;
       } catch (err) {
         if (err && (err.name === "AbortError" || err.name === "TimeoutError")) {
@@ -1196,7 +1196,7 @@
 
     // ---- live GW scoreboard for the fixtures strip: 10s refresh while any match is live ----
     const SCOREBOARD_POLL_MS = 10000;
-    const APP_BUILD = "1.37";
+    const APP_BUILD = "1.38";
     function scoreboardFor(id) {
       const sb = state.scoreboard;
       if (!sb || sb.gameweek !== state.gameweek) return null;
@@ -1381,6 +1381,11 @@
         location.reload();
       } catch (e) {}
     }
+    // Gameweek the fixture strip belongs to (its own payload), so a match always opens in the right GW.
+    function stripGameweek() {
+      const src = state.league || state.entry;
+      return (src && src.gameweek) || (state.scoreboard && state.scoreboard.gameweek) || state.gameweek || null;
+    }
     function renderFixtures(fixtures) {
       const box = el("<section class='card' id='fxStrip'><div class='muted'>Gameweek fixtures <span class='mc-dot fx-dot' title='Live scores'></span><span class='mc-src espn fx-src'" +
         (state.scoreboard && state.scoreboard.source === "ESPN" ? "" : " hidden") + ">scores: ESPN</span></div><div class='fixtures'></div></section>");
@@ -1397,8 +1402,8 @@
         const clock = fxClock(fx);
         const node = el("<div class='fx tap' role='button' tabindex='0' data-fx='" + fx.id + "'><div>" + escapeHtml(fx.home) + " <span class='score'>" + score +
           "</span> " + escapeHtml(fx.away) + "</div><div class='muted'><span class='clk'>" + escapeHtml(clock) + "</span> · <span class='fx-open'>Match ›</span></div></div>");
-        node.addEventListener("click", () => openMatch(fx.id));
-        node.addEventListener("keydown", (ev) => { if (ev.key === "Enter" || ev.key === " ") { ev.preventDefault(); openMatch(fx.id); } });
+        node.addEventListener("click", () => openMatch(fx.id, stripGameweek()));
+        node.addEventListener("keydown", (ev) => { if (ev.key === "Enter" || ev.key === " ") { ev.preventDefault(); openMatch(fx.id, stripGameweek()); } });
         if (fx.started && !fx.finished) node.classList.add("live");
         if (fx.finished) node.classList.add("done");
         const sbRow = scoreboardFor(fx.id);
@@ -1880,13 +1885,14 @@
         f.type === "penalties_missed" ? " (pen missed)" : f.type === "red_cards" ? " (red)" : "";
       return "<b>" + escapeHtml(f.player) + "</b>" + times(f.count) + extra;
     }
-    async function openMatch(fixtureId) {
+    async function openMatch(fixtureId, gw) {
       stopMatchStream();
       clearInterval(matchState.timer);
       matchState.timer = null;
       matchState.streamFailures = 0;
       matchState.streamDisabled = false;
       matchState.id = fixtureId;
+      matchState.gw = gw || null;
       matchState.tab = "facts";
       matchState.tabAuto = true;
       matchState.data = null;
@@ -1939,7 +1945,7 @@
     // Push first (SSE), polling every 10s only when SSE is unsupported or keeps failing.
     const MATCH_POLL_MS = 10000;
     function matchQuery() {
-      return "?entryId=" + matchEntryId() + (state.gameweek ? "&gameweek=" + state.gameweek : "");
+      return "?entryId=" + matchEntryId() + (matchState.gw || state.gameweek ? "&gameweek=" + (matchState.gw || state.gameweek) : "");
     }
     const MATCH_PRE_POLL_MS = 60000;
     function scheduleMatchUpdates() {
@@ -2037,8 +2043,10 @@
       wrap.appendChild(top);
       if (!m) {
         wrap.appendChild(el("<section class='card'>" + (matchState.error
-          ? "<p class='error'>" + escapeHtml(matchState.error) + "</p>"
+          ? "<p class='error'>" + escapeHtml(matchState.error) + "</p><button type='button' class='mc-retry' style='min-height:44px;padding:0 18px'>Retry</button>"
           : "<p class='muted'>Loading match…</p>") + "</section>"));
+        const retry = wrap.querySelector(".mc-retry");
+        if (retry) retry.onclick = () => { matchState.error = null; renderMatch(); loadMatch(false); };
         sheet.innerHTML = "";
         sheet.appendChild(wrap);
         return;

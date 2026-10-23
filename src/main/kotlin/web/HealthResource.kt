@@ -10,6 +10,12 @@ import jakarta.ws.rs.core.MediaType
 @Path("/health")
 @Produces(MediaType.APPLICATION_JSON)
 class HealthResource(private val service: FplService) {
+    /** Liveness/readiness: answers from memory only, never touches the FPL API, caches or locks. */
     @GET
-    fun health(): HealthResponse = service.health()
+    fun health(): HealthResponse = HealthResponse(status = "ok", fpl = "not-checked")
+
+    /** Deep check (fetches/uses the cached FPL bootstrap). Not used by Kubernetes probes. */
+    @GET
+    @Path("/fpl")
+    fun fpl(): HealthResponse = service.health()
 }
