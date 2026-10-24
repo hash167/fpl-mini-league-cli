@@ -39,6 +39,7 @@ class FplWebApplication : Application<FplWebConfiguration>() {
         environment.jersey().register(EntriesResource(service))
         environment.jersey().register(LeaguesResource(service))
         environment.jersey().register(FixturesResource(service))
+        environment.jersey().register(PlayersResource(service))
         environment.jersey().register(ScoreboardResource(service))
         val streamMapper = environment.objectMapper
         val hub = MatchStreamHub(

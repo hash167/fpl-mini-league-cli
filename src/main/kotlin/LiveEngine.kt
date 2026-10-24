@@ -314,6 +314,25 @@ data class ProjectedBonusSheet(
     val extraByElement: Map<Int, Int>
 )
 
+/** BPS/bonus candidates for one fixture (shared by the bonus sheet and the per-player breakdown). */
+fun bonusCandidates(
+    fixture: FixtureInfo,
+    liveStats: Map<Int, LiveElementStats>,
+    players: Map<Int, PlayerInfo>
+): List<BonusCandidate> = players.values
+    .filter { it.teamId == fixture.teamH || it.teamId == fixture.teamA }
+    .map { info ->
+        val stats = liveStats[info.id]
+        val minutes = stats?.minutes ?: 0
+        val bps = fixture.bpsByElement[info.id]
+            ?: stats?.bps
+            ?: 0
+        val official = fixture.officialBonusByElement[info.id]
+            ?: stats?.officialBonusByFixture?.get(fixture.id)
+            ?: if ((stats?.explainFixtureIds?.size ?: 0) <= 1) (stats?.bonus ?: 0) else 0
+        BonusCandidate(info.id, minutes, bps, official)
+    }
+
 fun buildBonusSheet(
     fixtures: List<FixtureInfo>,
     liveStats: Map<Int, LiveElementStats>,
@@ -325,20 +344,7 @@ fun buildBonusSheet(
 
     for (fixture in fixtures) {
         if (!fixture.started) continue
-        val onFixture = players.values
-            .filter { it.teamId == fixture.teamH || it.teamId == fixture.teamA }
-            .map { info ->
-                val stats = liveStats[info.id]
-                val minutes = stats?.minutes ?: 0
-                val bps = fixture.bpsByElement[info.id]
-                    ?: stats?.bps
-                    ?: 0
-                val official = fixture.officialBonusByElement[info.id]
-                    ?: stats?.officialBonusByFixture?.get(fixture.id)
-                    ?: if ((stats?.explainFixtureIds?.size ?: 0) <= 1) (stats?.bonus ?: 0) else 0
-                BonusCandidate(info.id, minutes, bps, official)
-            }
-        val (awards, isConfirmed) = fixtureBonusAwards(onFixture)
+        val (awards, isConfirmed) = fixtureBonusAwards(bonusCandidates(fixture, liveStats, players))
         for ((elementId, amount) in awards) {
             if (isConfirmed) {
                 confirmed[elementId] = (confirmed[elementId] ?: 0) + amount

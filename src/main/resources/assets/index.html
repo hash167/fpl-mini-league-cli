@@ -422,6 +422,34 @@
     .arrow.down { color: var(--rank-down); }
     .arrow.flat { color: var(--rank-flat); }
     .pboard-cards { display: none; }
+    /* Tap-to-toggle points breakdown (board cards, picks rows, league squad tiles). */
+    [data-bd-id] { cursor: pointer; -webkit-tap-highlight-color: rgba(4, 120, 87, 0.08); }
+    .p-card.bd-open, .lf-pl.bd-open { border-color: #6ee7b7; box-shadow: 0 0 0 1px rgba(16, 185, 129, 0.25); }
+    tr.bd-open td { background: #ecfdf5; }
+    .bd-panel { margin-top: 0.5rem; padding: 0.5rem 0.55rem; background: #fff; border: 1px solid var(--line); border-radius: 10px;
+      color: var(--card-text, #0f172a); font-size: 0.8rem; max-width: 100%; box-sizing: border-box; overflow: hidden; cursor: default; }
+    td .bd-panel { position: sticky; left: 0; max-width: min(100%, calc(100vw - 2.6rem)); margin: 0.25rem 0; }
+    .bd-panel .bd-head { display: flex; justify-content: space-between; gap: 0.5rem; font-weight: 650; color: #0f172a; margin-bottom: 0.2rem; }
+    .bd-panel .bd-head .muted { font-weight: 500; }
+    .bd-panel table.bd { width: 100%; border-collapse: collapse; font-variant-numeric: tabular-nums; table-layout: fixed; }
+    .bd-panel table.bd th, .bd-panel table.bd td { display: table-cell !important; } /* parent table.live.players nth-child hide rules must not leak in */
+    .bd-panel table.bd th, .bd-panel table.bd td { padding: 0.2rem 0.15rem; border: 0; border-bottom: 1px solid #eef2f7; text-align: left; position: static;
+      background: transparent; font-size: 0.78rem; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    .bd-panel table.bd th { color: #64748b; font-weight: 600; font-size: 0.7rem; text-transform: uppercase; letter-spacing: 0.03em; }
+    .bd-panel table.bd th.n, .bd-panel table.bd td.n, .bd-panel table.bd .n { text-align: right !important; width: 3.4rem; }
+    .bd-panel table.bd col.lab { width: auto; }
+    .bd-panel table.bd tr.fx td { color: #334155; font-weight: 650; background: #f8fafc; }
+    .bd-panel table.bd tr.tot td { font-weight: 750; color: #0f172a; border-bottom: 0; }
+    .bd-panel .pos { color: #047857; font-weight: 650; }
+    .bd-panel .neg { color: #b91c1c; font-weight: 650; }
+    .bd-panel .zero { color: #64748b; }
+    .bd-tag { display: inline-block; font-size: 0.64rem; font-weight: 700; padding: 0 0.3rem; border-radius: 999px; margin-left: 0.25rem; vertical-align: 1px; }
+    .bd-tag.projected { background: #fef3c7; color: #92400e; }
+    .bd-tag.provisional { background: #e0f2fe; color: #075985; }
+    .bd-tag.confirmed { background: #ecfdf5; color: #047857; }
+    .bd-panel .bd-foot { color: #64748b; font-size: 0.72rem; margin-top: 0.25rem; }
+    .bd-panel .bd-retry { min-height: 44px; padding: 0 18px; margin-top: 0.3rem; }
+    .lf-bd { margin-top: 0.35rem; }
     .p-card {
       background: #f8fafc; border: 1px solid var(--line); border-radius: 12px;
       padding: 0.65rem 0.7rem; color: var(--card-text);
@@ -989,6 +1017,7 @@
     }
 
     function scheduleRefresh() {
+      bdRefresh();
       const live = !!(state.board && state.board.live) || !!(state.entry && state.entry.live) || !!(state.league && state.league.live);
       state.refreshLive = live;
       paintUpdated();
@@ -1196,7 +1225,7 @@
 
     // ---- live GW scoreboard for the fixtures strip: 10s refresh while any match is live ----
     const SCOREBOARD_POLL_MS = 10000;
-    const APP_BUILD = "1.38";
+    const APP_BUILD = "1.39";
     function scoreboardFor(id) {
       const sb = state.scoreboard;
       if (!sb || sb.gameweek !== state.gameweek) return null;
@@ -1558,14 +1587,18 @@
         else if (pts > 0) cls = "lo";
         const tag = pl.captain ? "C" : (pl.viceCaptain ? "VC" : "");
         const sub = pl.autoSubIn ? " IN" : (pl.autoSubOut ? " OUT" : "");
-        return "<div class='lf-pl" + (pl.onBench ? " bench" : "") + "'>" +
+        const ctx = "league:" + team.entryId;
+        return "<div class='lf-pl" + (pl.onBench ? " bench" : "") + (bdIsOpen(ctx, pl.element) ? " bd-open" : "") + "'" + bdAttrs(ctx, pl.element, pl.multiplier) + ">" +
           "<div class='pn'>" + escapeHtml(pl.webName || pl.name || "") + "</div>" +
           (tag || sub ? ("<div class='tag'>" + tag + sub + "</div>") : "") +
           "<div class='pp " + cls + "'>" + pts + "</div></div>";
       }
+      const bdCtx = "league:" + team.entryId;
+      const bdHere = state.bd && state.bd.ctx === bdCtx && players.some((pl) => pl.element === state.bd.id);
       return metaHtml +
         "<div class='lf-squad'>" + xi.map(plCell).join("") + "</div>" +
-        (bench.length ? ("<div class='muted' style='margin:0.35rem 0 0.15rem;font-size:0.7rem;color:#6b7280'>Bench</div><div class='lf-squad'>" + bench.map(plCell).join("") + "</div>") : "");
+        (bench.length ? ("<div class='muted' style='margin:0.35rem 0 0.15rem;font-size:0.7rem;color:#6b7280'>Bench</div><div class='lf-squad'>" + bench.map(plCell).join("") + "</div>") : "") +
+        (bdHere ? "<div class='lf-bd'>" + bdPanelHtml(bdCtx, state.bd.id) + "</div>" : "");
     }
 
     function scorerPills(team) {
@@ -1584,6 +1617,117 @@
       });
       return "<div class='scorer-pills'>" + pills.join("") + "</div>";
     }
+
+    // ---------- player points breakdown (tap to open, tap again to close) ----------
+    const BD_REFRESH_MS = 15000;
+    function bdIsOpen(ctx, id) { return !!(state.bd && state.bd.ctx === ctx && state.bd.id === id); }
+    function bdAttrs(ctx, id, mult) {
+      return " data-bd-ctx='" + escapeHtml(ctx) + "' data-bd-id='" + Number(id) + "' data-bd-mult='" + (Number(mult) || 1) +
+        "' role='button' tabindex='0' aria-expanded='" + (bdIsOpen(ctx, id) ? "true" : "false") + "'";
+    }
+    function bdGw() { return (state.board && state.board.gameweek) || state.gameweek || null; }
+    function bdPts(n) {
+      const v = Number(n) || 0;
+      return "<span class='" + (v > 0 ? "pos" : (v < 0 ? "neg" : "zero")) + "'>" + (v > 0 ? "+" + v : String(v)) + "</span>";
+    }
+    function bdPanelHtml(ctx, id) {
+      const entry = (state.bdCache || {})[id];
+      let inner;
+      if (!entry || (entry.loading && !entry.data)) inner = "<p class='muted'>Loading points breakdown…</p>";
+      else if (entry.error && !entry.data) inner = "<p class='error'>" + escapeHtml(entry.error) + "</p><button type='button' class='bd-retry'>Retry</button>";
+      else inner = bdTableHtml(entry.data, state.bd && state.bd.mult);
+      return "<div class='bd-panel' data-bd-panel='" + escapeHtml(ctx) + "|" + Number(id) + "'>" + inner + "</div>";
+    }
+    function bdTableHtml(d, mult) {
+      const fxs = d.fixtures || [];
+      let rows = "";
+      if (!fxs.length) rows = "<tr><td colspan='3' class='muted'>No fixture this gameweek.</td></tr>";
+      fxs.forEach((f) => {
+        if (fxs.length > 1 || f.score || !f.started) {
+          rows += "<tr class='fx'><td colspan='3'>vs " + escapeHtml(f.opponent) + (f.score ? " · " + escapeHtml(f.score) : "") +
+            (!f.started ? " · not started" : (f.finished ? " · FT" : " · live")) + "</td></tr>";
+        }
+        (f.stats || []).forEach((st) => {
+          if (st.identifier === "bonus") return;
+          rows += "<tr><td>" + escapeHtml(st.label) + "</td><td class='n'>" + fmt(st.value) + "</td><td class='n'>" + bdPts(st.points) + "</td></tr>";
+        });
+        if (f.bonus > 0 || f.bps != null) {
+          const tag = f.bonusStatus && f.bonusStatus !== "none" ? "<span class='bd-tag " + f.bonusStatus + "'>" + f.bonusStatus + "</span>" : "";
+          rows += "<tr><td>Bonus" + tag + (f.bps != null ? " <span class='muted'>· BPS " + fmt(f.bps) + "</span>" : "") +
+            "</td><td class='n'>" + fmt(f.bonus) + "</td><td class='n'>" + bdPts(f.bonus) + "</td></tr>";
+        }
+      });
+      rows += "<tr class='tot'><td>Total</td><td class='n'></td><td class='n'>" + fmt(d.officialTotal) + "</td></tr>";
+      if (d.projectedBonus > 0) {
+        rows += "<tr class='tot'><td>With projected bonus<span class='bd-tag projected'>projected</span></td><td class='n'></td><td class='n'>" + fmt(d.liveTotal) + "</td></tr>";
+      }
+      const m = Number(mult) || 1;
+      if (m > 1) rows += "<tr class='tot'><td>× " + m + (m === 3 ? " (triple captain)" : " (captain)") + "</td><td class='n'></td><td class='n'>" + fmt(d.liveTotal * m) + "</td></tr>";
+      return "<div class='bd-head'><span>" + escapeHtml(d.webName) + " <span class='muted'>" + escapeHtml(d.team) + " · " + escapeHtml(d.position) +
+        "</span></span><span class='muted'>GW" + d.gameweek + (d.bps != null ? " · BPS " + fmt(d.bps) : "") + "</span></div>" +
+        "<table class='bd'><colgroup><col class='lab'><col class='n'><col class='n'></colgroup><thead><tr><th>Stat</th><th class='n'>Value</th><th class='n'>Pts</th></tr></thead><tbody>" +
+        rows + "</tbody></table>" +
+        (d.projectedBonus > 0 ? "<div class='bd-foot'>Projected bonus is estimated from live BPS and not yet in FPL's total.</div>" : "");
+    }
+    async function bdFetch(id, quiet) {
+      state.bdCache = state.bdCache || {};
+      const entry = state.bdCache[id] || (state.bdCache[id] = {});
+      entry.loading = true;
+      if (!quiet) entry.error = null;
+      try {
+        const gw = bdGw();
+        const data = await api("/players/" + id + "/breakdown" + (gw ? "?gameweek=" + gw : ""));
+        entry.data = data; entry.error = null; entry.at = Date.now();
+      } catch (err) {
+        entry.error = err.message;
+        if (!quiet) entry.data = null;
+      }
+      entry.loading = false;
+      bdPaint();
+    }
+    // Repaint open panels in place (no full re-render, so board scroll / card state are kept).
+    function bdPaint() {
+      if (!state.bd) return;
+      document.querySelectorAll("[data-bd-panel]").forEach((node) => {
+        const [ctx, id] = node.getAttribute("data-bd-panel").split("|");
+        if (ctx === state.bd.ctx && Number(id) === state.bd.id) node.outerHTML = bdPanelHtml(ctx, Number(id));
+      });
+    }
+    function bdToggle(ctx, id, mult) {
+      if (bdIsOpen(ctx, id)) state.bd = null;
+      else {
+        state.bd = { ctx: ctx, id: id, mult: mult };
+        const cached = (state.bdCache || {})[id];
+        if (!cached || !cached.data || Date.now() - (cached.at || 0) > BD_REFRESH_MS) bdFetch(id, !!(cached && cached.data));
+      }
+      if (ctx === "board") renderBoard(); else render();
+    }
+    // Live updates: refresh the open breakdown whenever the board / entry / league data refreshes.
+    function bdRefresh() {
+      if (!state.bd) return;
+      const c = (state.bdCache || {})[state.bd.id];
+      if (c && c.loading) return;
+      if (!c || Date.now() - (c.at || 0) >= BD_REFRESH_MS) bdFetch(state.bd.id, true);
+    }
+    // Capture phase so a tap on a squad tile / panel never reaches the league card's expand toggle.
+    document.addEventListener("click", (ev) => {
+      const t = ev.target;
+      if (!t || !t.closest) return;
+      const retry = t.closest(".bd-retry");
+      if (retry && state.bd) { ev.stopPropagation(); bdFetch(state.bd.id, false); bdPaint(); return; }
+      if (t.closest(".bd-panel")) { ev.stopPropagation(); return; }
+      const hit = t.closest("[data-bd-id]");
+      if (!hit) return;
+      ev.stopPropagation();
+      bdToggle(hit.getAttribute("data-bd-ctx"), Number(hit.getAttribute("data-bd-id")), Number(hit.getAttribute("data-bd-mult")) || 1);
+    }, true);
+    document.addEventListener("keydown", (ev) => {
+      if (ev.key !== "Enter" && ev.key !== " ") return;
+      const hit = ev.target && ev.target.closest && ev.target.closest("[data-bd-id]");
+      if (!hit || hit !== ev.target) return;
+      ev.preventDefault(); ev.stopPropagation();
+      bdToggle(hit.getAttribute("data-bd-ctx"), Number(hit.getAttribute("data-bd-id")), Number(hit.getAttribute("data-bd-mult")) || 1);
+    }, true);
 
     function renderPicks() {
       const p = state.picks;
@@ -1606,12 +1750,14 @@
         const tag = pl.captain ? " C" : (pl.viceCaptain ? " VC" : "");
         const sub = pl.autoSubIn ? " <span class='in'>IN</span>" : (pl.autoSubOut ? " <span class='out'>OUT</span>" : "");
         const bonus = (pl.confirmedBonus ? pl.confirmedBonus : (pl.projectedBonus ? ("+" + pl.projectedBonus + "p") : "0"));
-        const tr = el("<tr class='" + (pl.onBench ? "bench" : "") + "'><td class='tag'>" + pl.elementTypeName +
+        const bdOpen = bdIsOpen("picks", pl.element);
+        const tr = el("<tr class='" + (pl.onBench ? "bench" : "") + (bdOpen ? " bd-open" : "") + "'" + bdAttrs("picks", pl.element, pl.multiplier) + "><td class='tag'>" + pl.elementTypeName +
           "</td><td>" + escapeHtml(pl.webName || pl.name) + (pl.team ? " <span class='muted'>" + escapeHtml(pl.team) + "</span>" : "") +
           tag + sub + "</td><td class='num'>" + (priceHtml(pl) || "—") + "</td><td class='num'>" + pl.minutes + "</td><td class='num'>" + pl.rawPoints +
           "</td><td class='num'>" + bonus + "</td><td class='num'>" + pl.multiplier +
           "</td><td class='num'>" + fmtEo(pl.eo) + "</td><td class='num'>" + pl.contribution + "</td></tr>");
         tbody.appendChild(tr);
+        if (bdOpen) tbody.appendChild(el("<tr class='bd-row'><td colspan='9'>" + bdPanelHtml("picks", pl.element) + "</td></tr>"));
       });
       wrap.appendChild(table);
       box.appendChild(wrap);
@@ -1730,24 +1876,29 @@
       });
       const tb = table.querySelector("tbody");
       rows.forEach((p) => {
-        tb.appendChild(el("<tr><td>" + escapeHtml(p.webName) + "</td><td>" + escapeHtml(p.team) +
+        const bdOpen = bdIsOpen("board", p.id);
+        tb.appendChild(el("<tr" + (bdOpen ? " class='bd-open'" : "") + bdAttrs("board", p.id, 1) + "><td>" + escapeHtml(p.webName) + "</td><td>" + escapeHtml(p.team) +
           "</td><td>" + escapeHtml(p.position) + "</td><td class='num'>" + fmt(p.minutes) +
           "</td><td class='num'>" + fmt(p.livePoints) + "</td><td class='num price'>" + officialPrice(p) +
           "</td><td class='num'>" + fmtNet(p.netTransfers) + "</td><td>" + estHtml(p) + "</td></tr>"));
+        if (bdOpen) tb.appendChild(el("<tr class='bd-row'><td colspan='8'>" + bdPanelHtml("board", p.id) + "</td></tr>"));
       });
       const cards = el("<div class='pboard-cards'></div>");
       rows.forEach((p) => {
+        const bdOpen = bdIsOpen("board", p.id);
         cards.appendChild(el(
-          "<article class='p-card'><div class='p-card-top'><div><strong>" + escapeHtml(p.webName) +
+          "<article class='p-card" + (bdOpen ? " bd-open" : "") + "'" + bdAttrs("board", p.id, 1) + "><div class='p-card-top'><div><strong>" + escapeHtml(p.webName) +
           "</strong> <span class='muted'>" + escapeHtml(p.team) + " · " + escapeHtml(p.position) +
           "</span></div><div class='p-card-pts'>" + fmt(p.livePoints) + "</div></div>" +
           "<div class='muted'>" + fmt(p.minutes) + "' · " + officialPrice(p) + " · net " + fmtNet(p.netTransfers) +
-          "</div><div>" + estHtml(p) + "</div></article>"
+          "</div><div>" + estHtml(p) + "</div>" + (bdOpen ? bdPanelHtml("board", p.id) : "") + "</article>"
         ));
       });
+      const keepTop = mount.scrollTop;
       mount.innerHTML = "";
       mount.appendChild(table);
       mount.appendChild(cards);
+      if (keepTop) mount.scrollTop = keepTop;
     }
     async function loadPrices(quiet) {
       try {

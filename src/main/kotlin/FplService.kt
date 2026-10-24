@@ -135,6 +135,17 @@ class FplService(
         return merged.copy(table = table)
     }
 
+    /** Per-stat points for one player, read from the cached event-live tree (small response, no new caches). */
+    fun playerBreakdown(elementId: Int, gameweek: Int?): PlayerBreakdown {
+        val gw = gameweek ?: currentGameweek()
+        val bootstrap = api.bootstrap()
+        val live = api.eventLive(gw)
+        return buildPlayerBreakdown(
+            elementId, gw, live, parseFixtures(api.fixtures(gw)), parsePlayerInfo(bootstrap),
+            parseTeamShortNames(bootstrap), parseLiveElementStats(live)
+        ) ?: throw FplApiException("Player $elementId not found", 404)
+    }
+
     fun currentGameweek(): Int {
         return currentGameweekId(api.bootstrap())
             ?: throw IllegalStateException("Could not determine current gameweek from FPL bootstrap data.")
