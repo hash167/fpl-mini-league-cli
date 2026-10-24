@@ -34,3 +34,31 @@
 !k8s/
 !k8s/**
 !.dockerignore
+
+# Secret-scanning config (2026-10-24)
+!.pre-commit-config.yaml
+!ci/
+!ci/**
+!.github/
+!.github/**
+
+# --- secrets hygiene (2026-10-24): re-ignore secret-looking files even under allowed dirs ---
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+*.p12
+*.pfx
+id_rsa*
+id_ed25519*
+*.kubeconfig
+kubeconfig*
+k3s.yaml
+*-secret.yaml
+*-secrets.yaml
+secrets.y*ml
+credentials.json
+*-creds.json
+*tunnel-token*
+gitleaks-report*.json
