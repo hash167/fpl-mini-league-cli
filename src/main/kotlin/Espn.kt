@@ -536,7 +536,7 @@ fun espnHasLineups(summary: JsonObject?): Boolean =
         r.arr("roster").mapNotNull { it as? JsonObject }.any { it.bool("starter") == true }
     } == true
 
-const val APP_BUILD = "1.39"
+const val APP_BUILD = "1.40"
 
 data class ScoreboardResponse(
     val gameweek: Int,

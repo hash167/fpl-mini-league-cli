@@ -238,6 +238,7 @@ class FplServiceTest {
         assertEquals(3, board.players.size)
         val saka = board.players.first { it.id == 1 }
         assertEquals("Saka", saka.webName)
+        assertEquals("Bukayo Saka", saka.fullName, "full name is exposed for client-side player search")
         assertEquals("ARS", saka.team)
         assertEquals("MID", saka.position)
         assertEquals(90, saka.minutes)

@@ -375,7 +375,8 @@ class FplService(
                 netTransfers = tin - tout,
                 selectedBy = info.selectedBy,
                 priceEstimate = "stable",
-                priceEstimateReason = ""
+                priceEstimateReason = "",
+                fullName = info.name
             )
         }
         return LiveBoardResponse(

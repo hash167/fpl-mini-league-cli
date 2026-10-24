@@ -344,7 +344,9 @@ data class LiveBoardPlayer(
     val netTransfers: Int,
     val selectedBy: String?,
     val priceEstimate: String,
-    val priceEstimateReason: String
+    val priceEstimateReason: String,
+    /** "First Second" from bootstrap; used only for client-side player search. */
+    val fullName: String = ""
 )
 
 

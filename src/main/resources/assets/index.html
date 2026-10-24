@@ -409,6 +409,25 @@
       background: #ecfdf5; border-color: #a7f3d0; color: #047857;
     }
     #homeBoard.collapsed #boardMount, #homeBoard.collapsed #boardChips { display: none; }
+    /* Player search (client-side over the loaded board). 16px font = no iOS zoom; 44px targets. */
+    .board-search { position: relative; margin: 0.55rem 0 0.5rem; min-width: 0; }
+    .board-search input {
+      width: 100%; box-sizing: border-box; height: 44px; font-size: 16px; padding: 0 2.9rem 0 2.3rem;
+      border: 1px solid #cbd5e1; border-radius: 12px; background: #ffffff; color: #0f172a;
+      -webkit-appearance: none; appearance: none;
+    }
+    .board-search input::placeholder { color: #94a3b8; }
+    .board-search input:focus { outline: none; border-color: #047857; box-shadow: 0 0 0 3px rgba(4, 120, 87, 0.15); }
+    .board-search input::-webkit-search-cancel-button, .board-search input::-webkit-search-decoration { -webkit-appearance: none; display: none; }
+    .board-search .bs-icon { position: absolute; left: 0.75rem; top: 50%; transform: translateY(-50%); color: #64748b; pointer-events: none; line-height: 0; }
+    .board-search .bs-clear {
+      position: absolute; right: 0; top: 0; width: 44px; height: 44px; min-height: 44px; padding: 0; margin: 0;
+      border: 0; background: transparent; color: #64748b; font-size: 1.25rem; line-height: 1; border-radius: 12px; box-shadow: none;
+    }
+    .board-search .bs-clear:hover { color: #0f172a; background: transparent; }
+    .board-search .bs-clear[hidden] { display: none; }
+    .board-empty { padding: 1rem 0.6rem; text-align: center; color: #475569; border: 1px dashed #cbd5e1; border-radius: 12px; background: #f8fafc; overflow-wrap: anywhere; }
+    .board-empty .bs-all { margin-top: 0.6rem; min-height: 44px; }
     #homeBoard.collapsed { padding: 0.55rem 0.75rem; }
     #boardToggle { font-size: 0.85rem; }
     #boardMount { max-height: min(52vh, 420px); overflow: auto; margin-top: 0.5rem; }
@@ -703,6 +722,12 @@
         </div>
         <button type="button" id="boardToggle">Show board</button>
       </div>
+      <div class="board-search" role="search">
+        <span class="bs-icon" aria-hidden="true"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"><circle cx="11" cy="11" r="7"/><path d="M20 20l-3.5-3.5"/></svg></span>
+        <input type="search" id="boardSearch" placeholder="Search player or team" aria-label="Search players"
+          autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck="false" enterkeyhint="search">
+        <button type="button" class="bs-clear" id="boardSearchClear" aria-label="Clear search" hidden>&times;</button>
+      </div>
       <div class="chips" id="boardChips">
         <button type="button" data-filter="all" class="active">All</button>
         <button type="button" data-filter="price">Price rise</button>
@@ -728,7 +753,7 @@
       league: null, picks: null, sort: { key: "liveRank", dir: 1 },
       timer: null, notifyTimer: null,
       notify: false, notifySeen: {}, notifyReady: false,
-      board: null, prices: null, boardFilter: "all", boardSort: { key: "livePoints", dir: -1 }, boardOpen: false
+      board: null, prices: null, boardFilter: "all", boardQuery: "", boardSort: { key: "livePoints", dir: -1 }, boardOpen: false
     };
 
     function el(html) {
@@ -1225,7 +1250,7 @@
 
     // ---- live GW scoreboard for the fixtures strip: 10s refresh while any match is live ----
     const SCOREBOARD_POLL_MS = 10000;
-    const APP_BUILD = "1.39";
+    const APP_BUILD = "1.40";
     function scoreboardFor(id) {
       const sb = state.scoreboard;
       if (!sb || sb.gameweek !== state.gameweek) return null;
@@ -1784,6 +1809,49 @@
       const text = lab === "likely_rise" ? "likely rise" : (lab === "likely_fall" ? "likely fall" : "stable");
       return "<span class='est " + cls + "' title='" + escapeHtml(p.priceEstimateReason || "") + "'>" + text + "</span>";
     }
+    // ---------- player search (client-side, accent-insensitive) ----------
+    const SEARCH_FOLD = { "ø": "o", "æ": "ae", "œ": "oe", "ß": "ss", "ł": "l", "đ": "d", "ð": "d", "þ": "th", "ı": "i", "ħ": "h" };
+    function foldText(v) {
+      return String(v || "").toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "")
+        .replace(/[øæœßłđðþıħ]/g, (c) => SEARCH_FOLD[c] || c).replace(/[^a-z0-9]+/g, " ").trim();
+    }
+    let searchIndexFor = null, searchIndex = null;
+    function boardSearchIndex() {
+      const players = (state.board && state.board.players) || [];
+      if (searchIndexFor === players && searchIndex) return searchIndex;
+      searchIndex = new Map();
+      players.forEach((p) => {
+        const name = foldText(p.webName), full = foldText(p.fullName || "");
+        searchIndex.set(p.id, { name: name, words: (name + " " + full).split(" ").filter(Boolean), hay: " " + name + " " + full + " ", team: foldText(p.team) });
+      });
+      searchIndexFor = players;
+      return searchIndex;
+    }
+    // 0 = exact web name, 1 = web name starts with query, 2 = team code, 3 = a name word starts with it, 4 = substring; -1 = no match.
+    function searchRank(p, q) {
+      const ix = boardSearchIndex().get(p.id) || { name: foldText(p.webName), words: foldText(p.webName).split(" "), hay: " " + foldText(p.webName) + " ", team: foldText(p.team) };
+      if (ix.name === q) return 0;
+      if (ix.name.startsWith(q)) return 1;
+      if (ix.team === q) return 2;
+      if (ix.hay.includes(" " + q)) return 3;
+      if (ix.hay.includes(q)) return 4;
+      return -1;
+    }
+    function searchFilter(rows) {
+      const q = foldText(state.boardQuery);
+      if (!q) return rows;
+      const out = [];
+      rows.forEach((p, i) => { const r = searchRank(p, q); if (r >= 0) out.push([r, i, p]); });
+      out.sort((a, b) => a[0] - b[0] || a[1] - b[1]);
+      return out.map((x) => x[2]);
+    }
+    function searchEmptyHtml() {
+      const q = String(state.boardQuery || "").trim();
+      const others = state.boardFilter === "price" ? searchFilter((state.board && state.board.players) || []).length : 0;
+      return "<div class='board-empty' role='status'>No players match “" + escapeHtml(q) + "”" +
+        (state.boardFilter === "price" ? " in likely price rises." : ".") +
+        (others ? "<br><button type='button' class='bs-all'>Show " + others + " in All players</button>" : "") + "</div>";
+    }
     function applyBoardOpen() {
       const box = document.getElementById("homeBoard");
       const btn = document.getElementById("boardToggle");
@@ -1799,7 +1867,7 @@
       if (state.boardFilter === "price") {
         const est = estimateRiseRows().slice();
         est.sort((a, b) => (Number(b.netTransfers) || 0) - (Number(a.netTransfers) || 0));
-        return est;
+        return searchFilter(est);
       }
       const { key, dir } = state.boardSort;
       rows.sort((a, b) => {
@@ -1809,7 +1877,7 @@
         }
         return dir * ((Number(av) || 0) - (Number(bv) || 0));
       });
-      return rows;
+      return searchFilter(rows);
     }
     function renderBoard() {
       const mount = document.getElementById("boardMount");
@@ -1822,7 +1890,13 @@
       const movers = estimateRiseRows();
       document.querySelector('#boardChips [data-filter="price"]').textContent = "Price rise (" + movers.length + ")";
       document.querySelector('#boardChips [data-filter="all"]').textContent = "All (" + all.length + ")";
-      if (state.boardFilter === "price") {
+      const query = String(state.boardQuery || "").trim();
+      if (query) {
+        const n = boardRows().length;
+        note.textContent = !n ? "No matches" + (state.boardFilter === "price" ? " in likely price rises" : "") :
+          n + (n === 1 ? " player matches" : " players match") + " “" + query + "”" +
+          (state.boardFilter === "price" ? " in likely price rises" : "") + " · tap a player for points";
+      } else if (state.boardFilter === "price") {
         const px = state.prices || {};
         const empty = !movers.length;
         if (empty) {
@@ -1836,29 +1910,39 @@
         note.textContent = (state.board.estimateNote || "") + (state.board.live ? " · GW live" : " · GW not live") + " · " + boardRows().length + " shown";
       }
       const rows = boardRows();
+      if (query && !rows.length) {
+        mount.innerHTML = searchEmptyHtml();
+        return;
+      }
       if (state.boardFilter === "price") {
         const table = el("<table class='live pboard'><thead><tr>" +
           "<th>Player</th><th>Team</th><th class='num'>£price</th><th class='num'>Net xfers</th><th>Estimate</th></tr></thead><tbody></tbody></table>");
         const tb = table.querySelector("tbody");
         rows.forEach((p) => {
           const pounds = p.nowPounds || officialPrice(p);
-          tb.appendChild(el("<tr><td>" + escapeHtml(p.webName) + "</td><td>" + escapeHtml(p.team) +
+          const bdOpen = bdIsOpen("board", p.id);
+          tb.appendChild(el("<tr" + (bdOpen ? " class='bd-open'" : "") + bdAttrs("board", p.id, 1) + "><td>" + escapeHtml(p.webName) + "</td><td>" + escapeHtml(p.team) +
             "</td><td class='num price'>" + escapeHtml(pounds) +
             "</td><td class='num'>" + fmtNet(p.netTransfers) + "</td><td>" + estHtml(p) + "</td></tr>"));
+          if (bdOpen) tb.appendChild(el("<tr class='bd-row'><td colspan='5'>" + bdPanelHtml("board", p.id) + "</td></tr>"));
         });
         const cards = el("<div class='pboard-cards'></div>");
         rows.forEach((p) => {
           const pounds = p.nowPounds || officialPrice(p);
+          const bdOpen = bdIsOpen("board", p.id);
           cards.appendChild(el(
-            "<article class='p-card'><div class='p-card-top'><div><strong>" + escapeHtml(p.webName) +
-            "</strong> <span class='muted'>" + escapeHtml(p.team) +
+            "<article class='p-card" + (bdOpen ? " bd-open" : "") + "'" + bdAttrs("board", p.id, 1) + "><div class='p-card-top'><div><strong>" + escapeHtml(p.webName) +
+            "</strong> <span class='muted'>" + escapeHtml(p.team) + (p.position ? " · " + escapeHtml(p.position) : "") +
             "</span></div><div class='p-card-pts'>" + escapeHtml(pounds) +
-            "</div></div><div class='muted'>net " + fmtNet(p.netTransfers) + "</div><div>" + estHtml(p) + "</div></article>"
+            "</div></div><div class='muted'>net " + fmtNet(p.netTransfers) + "</div><div>" + estHtml(p) + "</div>" +
+            (bdOpen ? bdPanelHtml("board", p.id) : "") + "</article>"
           ));
         });
+        const keepTopP = mount.scrollTop;
         mount.innerHTML = "";
         mount.appendChild(table);
         mount.appendChild(cards);
+        if (keepTopP) mount.scrollTop = keepTopP;
         return;
       }
       const table = el("<table class='live pboard'><thead><tr>" +
@@ -1933,6 +2017,33 @@
       document.querySelectorAll("#boardChips button").forEach((b) => b.classList.toggle("active", b === btn));
       renderBoard();
     });
+    (function wireBoardSearch() {
+      const input = document.getElementById("boardSearch");
+      const clear = document.getElementById("boardSearchClear");
+      let timer = 0;
+      function apply(v) {
+        state.boardQuery = v;
+        clear.hidden = !v;
+        if (v.trim() && !state.boardOpen) { state.boardOpen = true; applyBoardOpen(); }
+        document.getElementById("boardMount").scrollTop = 0;
+        renderBoard();
+      }
+      input.addEventListener("input", () => {
+        clear.hidden = !input.value;
+        clearTimeout(timer);
+        timer = setTimeout(() => apply(input.value), 300);
+      });
+      input.addEventListener("keydown", (e) => {
+        if (e.key === "Enter") { clearTimeout(timer); apply(input.value); input.blur(); }
+        else if (e.key === "Escape") { clearTimeout(timer); input.value = ""; apply(""); }
+      });
+      clear.addEventListener("click", () => { clearTimeout(timer); input.value = ""; apply(""); input.focus(); });
+      document.getElementById("boardMount").addEventListener("click", (e) => {
+        if (!e.target.closest || !e.target.closest(".bs-all")) return;
+        const allBtn = document.querySelector('#boardChips [data-filter="all"]');
+        if (allBtn) allBtn.click();
+      });
+    })();
     document.getElementById("boardToggle").addEventListener("click", () => {
       state.boardOpen = !state.boardOpen;
       try { localStorage.setItem("fpl.boardOpen", state.boardOpen ? "1" : "0"); } catch (e) {}

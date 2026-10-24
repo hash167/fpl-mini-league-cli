@@ -1,3 +1,5 @@
+# Optional, NOT applied in the cluster (verified 2026-10-24 with kubectl diff): public access is via
+# fpl.thewalawalas.com (Cloudflare Tunnel) / NodePort. Apply manually only if you want the Traefik /fpl path.
 apiVersion: networking.k8s.io/v1
 kind: Ingress
 metadata:

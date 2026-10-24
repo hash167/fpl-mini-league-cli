@@ -23,7 +23,7 @@ spec:
         fsGroup: 65534
       containers:
         - name: fpl-web
-          image: docker.io/library/fpl-web:1.39
+          image: docker.io/library/fpl-web:1.40
           imagePullPolicy: IfNotPresent
           ports:
             - name: http
@@ -56,7 +56,7 @@ spec:
             - name: OTEL_BSP_SCHEDULE_DELAY
               value: "2000"
             - name: OTEL_RESOURCE_ATTRIBUTES
-              value: service.namespace=fpl,service.version=1.39
+              value: service.namespace=fpl,service.version=1.40
             # entrypoint.sh prepends -javaagent:/app/opentelemetry-javaagent.jar to this value.
             # Default heap was 25% of 512Mi = 128Mi, which the working set (~90Mi after 6 min) exceeded.
             - name: JAVA_TOOL_OPTIONS
