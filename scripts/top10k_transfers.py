@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Aggregate top-10k (overall league 314) transfers for the upcoming GW and POST to fpl-web.
 
-Stdlib only. Env: FPL_WEB_URL, FPL_INGEST_TOKEN, CONCURRENCY (8), PAGES (200), MY_ENTRY (5498977), OUT_FILE (optional).
+Stdlib only. Env: FPL_WEB_URL, FPL_INGEST_TOKEN, CONCURRENCY (8), PAGES (200), MY_ENTRY (optional: marks that entry's squad), OUT_FILE (optional).
 Transfers are counted NET per manager (in-then-out of the same player cancels).
 """
 import json, os, random, sys, time, urllib.request, urllib.error
@@ -13,7 +13,8 @@ API = "https://fantasy.premierleague.com/api"
 UA = "fpl-live-tracker/1.29 (+https://fpl.thewalawalas.com; daily top10k stats)"
 CONC = int(os.environ.get("CONCURRENCY", "8"))
 PAGES = int(os.environ.get("PAGES", "200"))
-MY_ENTRY = int(os.environ.get("MY_ENTRY", "5498977"))
+_my_entry = os.environ.get("MY_ENTRY", "").strip()
+MY_ENTRY = int(_my_entry) if _my_entry else None  # unset: no my_squad lookup
 
 
 def get(url, tries=5):
@@ -102,7 +103,7 @@ def main():
     mode = "pre_deadline" if shown == gw else "post_deadline"
     my_squad = []
     try:
-        if cur:
+        if cur and MY_ENTRY is not None:
             my_squad = [p["element"] for p in get(f"{API}/entry/{MY_ENTRY}/event/{cur}/picks/")["picks"]]
     except Exception as e:
         print(f"my squad fetch failed: {e}", file=sys.stderr)

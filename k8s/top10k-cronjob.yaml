@@ -33,6 +33,9 @@ spec:
                   value: http://fpl-web.fpl.svc.cluster.local:8080/live/gw-stats/top10k
                 - name: CONCURRENCY
                   value: "8"
+                # Entry whose squad is starred in GW Stats; set per deployment (empty = no stars).
+                - name: MY_ENTRY
+                  value: "5498977"
                 - name: FPL_INGEST_TOKEN
                   valueFrom:
                     secretKeyRef:

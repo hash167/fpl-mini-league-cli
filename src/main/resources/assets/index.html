@@ -1286,6 +1286,7 @@
         netOk("entry", entry);
         if (!leagues.failed) saveLast("entry", entryId, { entry: entry, leagues: leagues, dataAge: entry.dataAge });
         persistView();
+        renderGwStats();
         render();
         scheduleRefresh();
         maybeNotifySquad(entry.players);
@@ -2362,7 +2363,6 @@
         navigator.serviceWorker.register("/sw.js?v=" + APP_BUILD).catch(function () {});
       }
     })();
-    const MY_ENTRY = 5498977;
     function timeAgo(iso) {
       const t = Date.parse(iso); if (!t) return "—";
       const m = Math.max(0, Math.round((Date.now() - t) / 60000));
@@ -2387,14 +2387,24 @@
       const mount = document.getElementById("gwStatsMount");
       try {
         const d = await api("/live/gw-stats/top10k");
-        const mine = new Set(d.my_squad || []);
+        state.gwStats = d;
         note.textContent = "GW" + d.gw + (d.mode === "post_deadline" ? " (locked; GW" + d.next_gw + " moves hidden by FPL until its deadline)" : " upcoming") + " · top " + Number(d.sample_size).toLocaleString() + " managers (net moves) · updated " + timeAgo(d.generated_at) +
           (d.failed_count ? " · " + d.failed_count + " fetch failures" : "");
-        mount.innerHTML = "<div class='gws-grid'>" + gwsList(d.transfers_in || [], "in", mine) + gwsList(d.transfers_out || [], "out", mine) + "</div>" +
-          "<div class='gws-note'>% = share of the top 10k sample. Overall = all managers this GW (FPL bootstrap). Wildcard and Free Hit moves aren’t visible until after the deadline. ★ = in squad of entry " + MY_ENTRY + ".</div>";
+        renderGwStats();
       } catch (err) {
         note.textContent = "Top 10k transfer stats not available yet.";
       }
+    }
+    // ★ squad marks come from the top10k CronJob's configured entry (d.my_entry / d.my_squad); only shown with an entry loaded.
+    function renderGwStats() {
+      const d = state.gwStats;
+      const mount = document.getElementById("gwStatsMount");
+      if (!d || !mount) return;
+      const showMine = !!(matchEntryId() && d.my_entry && (d.my_squad || []).length);
+      const mine = new Set(showMine ? d.my_squad : []);
+      mount.innerHTML = "<div class='gws-grid'>" + gwsList(d.transfers_in || [], "in", mine) + gwsList(d.transfers_out || [], "out", mine) + "</div>" +
+        "<div class='gws-note'>% = share of the top 10k sample. Overall = all managers this GW (FPL bootstrap). Wildcard and Free Hit moves aren’t visible until after the deadline." +
+        (showMine ? " ★ = in squad of entry " + escapeHtml(d.my_entry) + "." : "") + "</div>";
     }
     loadGwStats();
     // ---- FotMob-style match view (data: /fixtures/{id}/match, official FPL API only) ----
@@ -2409,7 +2419,11 @@
       ["Penalties", ["penalties_saved", "penalties_missed"]],
       ["Cards", ["yellow_cards", "red_cards"]]
     ];
-    function matchEntryId() { return state.entryId || MY_ENTRY; }
+    function matchEntryId() { return state.entryId || null; }
+    function squadNote(m) {
+      const id = m.squadEntryId || matchEntryId();
+      return id ? "Green = in the squad of entry " + escapeHtml(id) + "." : "";
+    }
     function kickoffLabel(iso) {
       if (!iso) return "TBC";
       const d = new Date(iso);
@@ -2484,7 +2498,10 @@
     // Push first (SSE), polling every 10s only when SSE is unsupported or keeps failing.
     const MATCH_POLL_MS = 10000;
     function matchQuery() {
-      return "?entryId=" + matchEntryId() + (matchState.gw || state.gameweek ? "&gameweek=" + (matchState.gw || state.gameweek) : "");
+      const params = [];
+      if (matchEntryId()) params.push("entryId=" + matchEntryId());
+      if (matchState.gw || state.gameweek) params.push("gameweek=" + (matchState.gw || state.gameweek));
+      return params.length ? "?" + params.join("&") : "";
     }
     const MATCH_PRE_POLL_MS = 60000;
     function scheduleMatchUpdates() {
@@ -2752,7 +2769,7 @@
     function renderEspnLineup(m) {
       const card = el("<section class='card mc-lineup'></section>");
       const pre = m.status.phase === "upcoming";
-      card.appendChild(el("<p class='mc-note'>" + (pre && hasEspnLineups(m) ? "<b>Lineups confirmed</b> (ESPN) · points from kickoff. " : "Lineups from ESPN with live FPL points. ") + "Green = in the squad of entry " + escapeHtml(m.squadEntryId || matchEntryId()) + ".</p>"));
+      card.appendChild(el("<p class='mc-note'>" + (pre && hasEspnLineups(m) ? "<b>Lineups confirmed</b> (ESPN) · points from kickoff. " : "Lineups from ESPN with live FPL points. ") + squadNote(m) + "</p>"));
       [[m.home, m.espn.homeLineup], [m.away, m.espn.awayLineup]].forEach(([team, lu]) => {
         const sec = el("<div class='mc-sec'><h4>" + crest(team, 20) + escapeHtml(team.name) + (lu && lu.formation ? " <span class='mc-form'>" + escapeHtml(lu.formation) + "</span>" : "") + "</h4></div>");
         if (!lu) { sec.appendChild(el("<p class='muted'>Lineup not available yet.</p>")); card.appendChild(sec); return; }
@@ -2810,7 +2827,7 @@
     }
     function renderMatchLineup(m) {
       const card = el("<section class='card mc-lineup'></section>");
-      card.appendChild(el("<p class='mc-note'>Players who've played, with live FPL points. Green = in the squad of entry " + escapeHtml(m.squadEntryId || matchEntryId()) + ".</p>"));
+      card.appendChild(el("<p class='mc-note'>Players who've played, with live FPL points. " + squadNote(m) + "</p>"));
       [[m.home, m.homeLineup], [m.away, m.awayLineup]].forEach(([team, rows]) => {
         const sec = el("<div class='mc-sec'><h4>" + crest(team, 20) + escapeHtml(team.name) + "</h4></div>");
         if (!rows.length) sec.appendChild(el("<p class='muted'>No minutes yet.</p>"));
