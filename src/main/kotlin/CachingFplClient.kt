@@ -41,7 +41,8 @@ private val cacheLog = LoggerFactory.getLogger("fpl.cache")
  *
  * - Fresh (age < ttl): returned straight away.
  * - Expired: one caller (the owner) reloads, outside any lock. Callers that arrive while a reload
- *   is in flight get the last good value immediately instead of queueing behind FPL.
+ *   is in flight wait at most the soft wait, then get the last good value (unflagged unless the
+ *   previous reload failed: slow is not failing).
  * - Reload fails: the last good value is kept and served (up to [maxStaleMs]) and flagged stale;
  *   for [failureCooldownMs] after a failure no new reload is attempted.
  * - No value yet (cold) and the load fails: the error propagates (mapped to 503 at the edge).
@@ -79,16 +80,28 @@ class TtlCache<T>(
         }
         if (!owner) {
             if (usable) {
-                // Someone else is already asking FPL; don't wait behind them.
-                if (lastFailureAt > loadedAt || age > ttlMs + FPL_TOTAL_DEADLINE_MS) Freshness.stale(age)
-                else Freshness.served(age)
-                return current!!
+                // Someone else is already asking FPL. If the last reload failed, don't queue behind
+                // them: serve the saved copy flagged stale. Otherwise wait briefly for their answer.
+                if (lastFailureAt > loadedAt) {
+                    Freshness.stale(age)
+                    return current!!
+                }
+                return softWait(future, current!!, age)
             }
             return awaitCold(future)
         }
         if (!usable) return loadInline(future, loader)
         // Expired but we have a usable value: reload in the background and only wait briefly.
         reloadPool.execute { runLoad(future, loader, current, age) }
+        return softWait(future, current!!, age)
+    }
+
+    /**
+     * Wait up to the soft wait for an in-flight reload. A reload that is merely slow is NOT a
+     * problem: we return the previous value unflagged (the next poll picks up the fresh one).
+     * Only a reload that actually failed marks the response stale ("FPL is slow" banner).
+     */
+    private fun softWait(future: CompletableFuture<T>, current: T, age: Long): T {
         return try {
             val wait = if (UpstreamHealth.troubled()) minOf(softWaitMs, UpstreamHealth.TROUBLED_WAIT_MS) else softWaitMs
             val v = future.get(wait, TimeUnit.MILLISECONDS)
@@ -96,13 +109,13 @@ class TtlCache<T>(
             v
         } catch (e: TimeoutException) {
             UpstreamHealth.trouble()
-            Freshness.stale(age)
-            current!!
+            if (lastFailureAt > loadedAt) Freshness.stale(age) else Freshness.served(age)
+            current
         } catch (e: ExecutionException) {
             val cause = e.cause ?: e
             if (cause is Exception) {
                 Freshness.stale(age)
-                current!!
+                current
             } else throw cause
         }
     }

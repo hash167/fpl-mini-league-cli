@@ -8,14 +8,26 @@ import java.util.concurrent.atomic.AtomicLong
  * into pool tasks with [Freshness.wrap].
  */
 class FreshnessRecorder {
-    private val maxAgeMs = AtomicLong(0)
+    private val maxServedAgeMs = AtomicLong(0)
+    private val maxStaleAgeMs = AtomicLong(0)
     private val staleFlag = AtomicBoolean(false)
 
-    fun served(ageMs: Long) { maxAgeMs.accumulateAndGet(ageMs.coerceAtLeast(0), ::maxOf) }
-    fun stale(ageMs: Long) { staleFlag.set(true); served(ageMs) }
+    fun served(ageMs: Long) { maxServedAgeMs.accumulateAndGet(ageMs.coerceAtLeast(0), ::maxOf) }
+    fun stale(ageMs: Long) {
+        staleFlag.set(true)
+        served(ageMs)
+        maxStaleAgeMs.accumulateAndGet(ageMs.coerceAtLeast(0), ::maxOf)
+    }
 
     val isStale: Boolean get() = staleFlag.get()
-    val ageSeconds: Long get() = maxAgeMs.get() / 1000L
+    /**
+     * The response's `dataAge`: how old the data served *because FPL failed* is. 0 when nothing was
+     * served stale. Normal cache hits (60s entry caches, 5-min transfers cache, idle caches being
+     * refreshed) don't count: they made "Updated 2m ago" / "21m ago" show while FPL was fine.
+     */
+    val ageSeconds: Long get() = maxStaleAgeMs.get() / 1000L
+    /** Oldest cache entry touched (diagnostics only). */
+    val servedAgeSeconds: Long get() = maxServedAgeMs.get() / 1000L
 }
 
 object Freshness {

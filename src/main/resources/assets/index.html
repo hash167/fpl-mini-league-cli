@@ -161,6 +161,8 @@
     .error { color: var(--danger); white-space: pre-wrap; }
     .stale-banner { display: flex; align-items: center; gap: 0.5rem; flex-wrap: wrap; margin: 0 0 0.6rem; padding: 0.2rem 0.4rem 0.2rem 0.75rem; min-height: 44px; border-radius: 12px; background: #fffbeb; border: 1px solid #fde68a; color: #92400e; font-size: 0.82rem; font-weight: 600; }
     .stale-banner[hidden] { display: none; }
+    .board-net { margin-top: 0.15rem; color: #92400e; font-size: 0.78rem; font-weight: 600; }
+    .board-net[hidden] { display: none; }
     .stale-banner .sb-dot { width: 8px; height: 8px; border-radius: 50%; background: #f59e0b; flex: none; }
     .stale-banner .sb-text { flex: 1 1 auto; min-width: 0; }
     .stale-banner .link-btn { color: #047857; font-size: 0.82rem; }
@@ -751,6 +753,7 @@
         <div>
           <strong>Live points + price watch</strong>
           <div class="muted" id="boardNote">Loading player board…</div>
+          <div class="board-net" id="boardNet" role="status" hidden></div>
         </div>
         <button type="button" id="boardToggle">Show board</button>
       </div>
@@ -954,16 +957,31 @@
       const inp = document.querySelector('input[name="entryId"]'); if (inp) inp.focus();
     });
     // "Updated Xs ago" in the app bar (replaces the static auto-refresh hint).
-    function markUpdated(ageSec) { state.updatedAt = Date.now() - Math.max(0, Number(ageSec) || 0) * 1000; paintUpdated(); }
+    // One source of truth for "how old is what's on screen": state.okAt[kind] is when each kind last
+    // got data from the server (minus the server's stale dataAge). The header and the banner both
+    // read pageUpdatedAt(), the oldest of the main content kinds actually on screen.
+    state.okAt = { entry: 0, league: 0, board: 0 };
+    function pageUpdatedAt() {
+      const ts = [];
+      if (state.entry && state.okAt.entry) ts.push(state.okAt.entry);
+      if (state.league && state.okAt.league) ts.push(state.okAt.league);
+      return ts.length ? Math.min.apply(null, ts) : 0;
+    }
+    function markUpdated(kind, ageSec) {
+      state.okAt[kind] = Date.now() - Math.max(0, Number(ageSec) || 0) * 1000;
+      state.updatedAt = pageUpdatedAt() || state.updatedAt;
+      paintUpdated();
+    }
     function paintUpdated() {
       const node = document.getElementById("refreshHint");
       if (!node) return;
-      if (!state.updatedAt) { node.textContent = ""; return; }
-      const sec = Math.max(0, Math.round((Date.now() - state.updatedAt) / 1000));
+      const at = pageUpdatedAt() || state.updatedAt;
+      if (!at) { node.textContent = ""; return; }
+      const sec = Math.max(0, Math.round((Date.now() - at) / 1000));
       node.innerHTML = "<span class='u-word'>Updated </span>" + (sec < 60 ? sec + "s" : Math.round(sec / 60) + "m") + " ago";
       node.title = state.refreshLive ? "Auto-refreshing while matches are live" : "Fixtures not started";
     }
-    setInterval(() => { paintUpdated(); paintStale(); }, 5000);
+    setInterval(() => { paintUpdated(); paintStale(); paintBoardNet(); }, 5000);
 
     // ---- Resilience: last-good data per view + "FPL is slow" banner ----
     // state.net[kind] = { failing, stale, cached, at } for kind in entry / league / board.
@@ -1001,26 +1019,45 @@
       if (m < 60) return m + "m ago";
       return Math.round(m / 60) + "h ago";
     }
-    function setNet(kind, info) { state.net[kind] = info; paintStale(); }
+    // The page-wide banner is only for a real problem with the main content (entry / league):
+    //  - a refresh actually failed or timed out (failing), or
+    //  - the server had to serve saved data older than a meaningful threshold (stale).
+    // A short stale serve, or a slow-but-working FPL, never shows it. The board card shows its own
+    // problems inline (#boardNet); mini-league list problems stay inline in that card.
+    const STALE_LIVE_SEC = 180;   // live gameweek: 3 min
+    const STALE_IDLE_SEC = 900;   // otherwise: 15 min
+    const CACHED_SHOW_SEC = 60;   // boot paint from localStorage only mentioned if older than this
+    const PAGE_KINDS = ["entry", "league"];
+    function liveNow() {
+      return !!((state.board && state.board.live) || (state.entry && state.entry.live) || (state.league && state.league.live));
+    }
+    function staleThresholdSec() { return liveNow() ? STALE_LIVE_SEC : STALE_IDLE_SEC; }
+    function setNet(kind, info) { state.net[kind] = info; paintStale(); if (kind === "board") paintBoardNet(); }
     function netOk(kind, data) {
-      const stale = !!(data && data.stale);
-      setNet(kind, stale ? { stale: true, at: Date.now() - (Number(data.dataAge) || 0) * 1000 } : null);
-      if (stale) scheduleRetry(); else maybeClearRetry();
+      const age = Math.max(0, Number(data && data.dataAge) || 0);
+      const old = !!(data && data.stale) && age > staleThresholdSec();
+      setNet(kind, old ? { stale: true } : null);
+      if (old) scheduleRetry(); else maybeClearRetry();
     }
     function netFail(kind) {
-      const prev = state.net[kind];
-      setNet(kind, { failing: true, at: (prev && prev.at) || state.updatedAt || Date.now() });
+      setNet(kind, { failing: true });
       scheduleRetry();
+    }
+    function pageProblems() {
+      return PAGE_KINDS.filter((k) => (k === "entry" ? state.entry : state.league)).map((k) => state.net[k]).filter(Boolean);
     }
     function paintStale() {
       const node = document.getElementById("staleBanner");
       if (!node) return;
-      const items = Object.values(state.net).filter((x) => x && (x.failing || x.stale || x.cached));
-      if (!items.length) { node.hidden = true; return; }
-      const oldest = Math.min.apply(null, items.map((x) => x.at || Date.now()));
-      const ago = fmtAgo(Date.now() - oldest);
+      // While a resume refresh is in flight we don't know yet; only a failed refresh shows the banner.
+      if (state.resuming) { node.hidden = true; return; }
+      const items = pageProblems();
       const failing = items.some((x) => x.failing);
       const stale = items.some((x) => x.stale);
+      const at = pageUpdatedAt() || state.updatedAt || Date.now();
+      const cached = !failing && !stale && items.some((x) => x.cached) && Date.now() - at > CACHED_SHOW_SEC * 1000;
+      if (!failing && !stale && !cached) { node.hidden = true; return; }
+      const ago = fmtAgo(Date.now() - at);
       document.getElementById("staleText").textContent = failing
         ? "Updated " + ago + " · FPL is slow, retrying"
         : stale ? "Updated " + ago + " · FPL is slow, showing saved data"
@@ -1028,10 +1065,19 @@
       document.getElementById("staleRetry").hidden = !(failing || stale);
       node.hidden = false;
     }
+    function paintBoardNet() {
+      const node = document.getElementById("boardNet");
+      if (!node) return;
+      const n = state.net.board;
+      if (!n || !(n.failing || n.stale) || state.resuming) { node.hidden = true; node.textContent = ""; return; }
+      node.textContent = "FPL is slow · board from " + fmtAgo(Date.now() - (state.okAt.board || Date.now()));
+      node.hidden = false;
+    }
     function refreshNow() {
-      loadBoard(true);
-      if (state.league) loadLeague(state.league.leagueId, true);
-      else if (state.entryId) loadEntry(state.entryId, true);
+      const jobs = [loadBoard(true)];
+      if (state.entryId) jobs.push(loadEntry(state.entryId, true));
+      if (state.league) jobs.push(loadLeague(state.league.leagueId, true));
+      return Promise.allSettled(jobs);
     }
     document.getElementById("staleRetry").addEventListener("click", () => {
       if (state.retryTimer) { clearTimeout(state.retryTimer); state.retryTimer = null; }
@@ -1236,7 +1282,7 @@
       if (entryRes.status === "fulfilled") {
         const entry = entryRes.value;
         applyEntry(entryId, entry, leagues);
-        markUpdated(entry.dataAge);
+        markUpdated("entry", entry.stale ? entry.dataAge : 0);
         netOk("entry", entry);
         if (!leagues.failed) saveLast("entry", entryId, { entry: entry, leagues: leagues, dataAge: entry.dataAge });
         persistView();
@@ -1274,7 +1320,7 @@
       try {
         const data = await api("/leagues/" + leagueId + "/live?autosubs=" + state.autosubs);
         applyLeague(data);
-        markUpdated(data.dataAge);
+        markUpdated("league", data.stale ? data.dataAge : 0);
         netOk("league", data);
         saveLast("league", leagueId, data);
         persistView();
@@ -1411,7 +1457,7 @@
 
     // ---- live GW scoreboard for the fixtures strip: 10s refresh while any match is live ----
     const SCOREBOARD_POLL_MS = 10000;
-    const APP_BUILD = "1.42";
+    const APP_BUILD = "1.43";
     function scoreboardFor(id) {
       const sb = state.scoreboard;
       if (!sb || sb.gameweek !== state.gameweek) return null;
@@ -1573,8 +1619,15 @@
       state.sbStreamDisabled = false; state.sbStreamFailures = 0;
       stopScoreboardStream();
       if (stripFixtures().length) loadScoreboard();
-      if (state.league) loadLeague(state.league.leagueId, true);
-      else if (state.entryId) loadEntry(state.entryId, true);
+      // Refresh everything on screen right away. Hide the banner until that refresh settles: it only
+      // comes back if the refresh actually fails (no "21m ago" flash from a backgrounded PWA).
+      if (state.retryTimer) { clearTimeout(state.retryTimer); state.retryTimer = null; }
+      state.retryCount = 0;
+      if (state.entryId || state.league || state.board) {
+        state.resuming = true; paintStale(); paintBoardNet();
+        const settle = () => { state.resuming = false; paintStale(); paintBoardNet(); };
+        refreshNow().then(settle, settle);
+      }
       if (matchState.id != null) {
         matchState.streamDisabled = false; matchState.streamFailures = 0;
         stopMatchStream();
@@ -2191,6 +2244,7 @@
         state.board = data;
         state.gameweek = data.gameweek;
         setPills(data.gameweek, !!(data.live || (state.entry && state.entry.live) || (state.league && state.league.live)));
+        state.okAt.board = Date.now() - (data.stale ? Math.max(0, Number(data.dataAge) || 0) : 0) * 1000;
         netOk("board", data);
         saveLast("board", null, data);
         await loadPrices(true);
@@ -2274,22 +2328,26 @@
       const lastBoard = readLast("board", null);
       if (lastBoard) {
         state.board = lastBoard.d;
-        setNet("board", { cached: true, at: lastBoard.t });
+        state.okAt.board = lastBoard.t;
+        setNet("board", { cached: true });
         renderBoard();
       }
       const lastEntry = entryId ? readLast("entry", entryId) : null;
       const lastLeague = leagueId ? readLast("league", leagueId) : null;
       if (lastEntry && lastEntry.d.entry) {
         applyEntry(entryId, lastEntry.d.entry, lastEntry.d.leagues || { leagues: [] });
-        setNet("entry", { cached: true, at: lastEntry.t });
+        state.okAt.entry = lastEntry.t;
+        setNet("entry", { cached: true });
       }
       if (lastLeague) {
         applyLeague(lastLeague.d);
-        setNet("league", { cached: true, at: lastLeague.t });
+        state.okAt.league = lastLeague.t;
+        setNet("league", { cached: true });
       }
       if (lastEntry || lastLeague) {
-        state.updatedAt = Math.min(lastEntry ? lastEntry.t : Infinity, lastLeague ? lastLeague.t : Infinity);
+        state.updatedAt = pageUpdatedAt() || Math.min(lastEntry ? lastEntry.t : Infinity, lastLeague ? lastLeague.t : Infinity);
         paintUpdated();
+        paintStale();
         persistView();
         render();
       }

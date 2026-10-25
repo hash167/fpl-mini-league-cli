@@ -51,7 +51,9 @@ class StaleOnErrorCacheTest {
         val (v, f) = Freshness.track { c.get { release.await(5, TimeUnit.SECONDS); "v2" } }
         val tookMs = (System.nanoTime() - started) / 1_000_000
         assertEquals("v1", v)
-        assertTrue(f.isStale)
+        // Slow is not failing: no stale flag, no dataAge (this is what raised the 21m banner in 1.42).
+        assertFalse(f.isStale)
+        assertEquals(0, f.ageSeconds)
         assertTrue(tookMs < 2_000, "took ${tookMs}ms")
         release.countDown()
         val deadline = System.currentTimeMillis() + 3_000
@@ -66,7 +68,8 @@ class StaleOnErrorCacheTest {
         now += 7_000
         val (_, f) = Freshness.track { c.get { error("should not load") } }
         assertFalse(f.isStale)
-        assertEquals(7, f.ageSeconds)
+        assertEquals(0, f.ageSeconds)
+        assertEquals(7, f.servedAgeSeconds)
     }
 
     @Test
@@ -103,7 +106,7 @@ class StaleOnErrorCacheTest {
 
     @Test
     fun `while one caller reloads others get the last value immediately (single flight, no lock convoy)`() {
-        val c = TtlCache<String>(ttlMs = 50, maxStaleMs = 60_000)
+        val c = TtlCache<String>(ttlMs = 50, maxStaleMs = 60_000, softWaitMs = 100)
         c.get { "old" }
         Thread.sleep(80)
         val started = CountDownLatch(1)
@@ -115,13 +118,49 @@ class StaleOnErrorCacheTest {
         }
         assertTrue(started.await(5, TimeUnit.SECONDS))
         val t0 = System.nanoTime()
-        val waiter = pool.submit<String> { c.get { loads.incrementAndGet(); "other" } }.get(2, TimeUnit.SECONDS)
+        val waiterF = pool.submit<Pair<String, FreshnessRecorder>> { Freshness.track { c.get { loads.incrementAndGet(); "other" } } }
+        val (waiter, wf) = waiterF.get(2, TimeUnit.SECONDS)
         assertEquals("old", waiter)
+        assertFalse(wf.isStale, "a slow (not failed) reload by another caller must not flag stale")
         assertTrue(System.nanoTime() - t0 < TimeUnit.SECONDS.toNanos(1))
+        assertEquals("old", owner.get(5, TimeUnit.SECONDS), "owner also stops waiting after the soft wait")
         release.countDown()
-        assertEquals("new", owner.get(5, TimeUnit.SECONDS))
+        val deadline = System.currentTimeMillis() + 3_000
+        while (c.ageMs()!! > 40 && System.currentTimeMillis() < deadline) Thread.sleep(5)
+        assertEquals("new", c.get { "unexpected" })
         assertEquals(1, loads.get())
         pool.shutdown()
+    }
+
+    @Test
+    fun `idle cache reloaded concurrently is not stale for the non-owner (1_42 false banner)`() {
+        // Bootstrap sat idle 21 min; three requests arrive together; FPL answers in ~1.7s.
+        UpstreamHealth.ok()
+        val c = TtlCache<String>(ttlMs = 50, maxStaleMs = 3_600_000)
+        c.get { "old" }
+        Thread.sleep(80)
+        val started = CountDownLatch(1)
+        val pool = Executors.newFixedThreadPool(2)
+        val owner = pool.submit<String> { c.get { started.countDown(); Thread.sleep(300); "new" } }
+        assertTrue(started.await(5, TimeUnit.SECONDS))
+        val (v, f) = pool.submit<Pair<String, FreshnessRecorder>> { Freshness.track { c.get { "other" } } }.get(5, TimeUnit.SECONDS)
+        assertEquals("new", v, "non-owner waits briefly and gets the fresh value")
+        assertFalse(f.isStale)
+        assertEquals(0, f.ageSeconds)
+        assertEquals("new", owner.get(5, TimeUnit.SECONDS))
+        pool.shutdown()
+    }
+
+    @Test
+    fun `reload that fails again is served stale with the real age`() {
+        val c = cache(cooldown = 0)
+        c.get { "v1" }
+        now += 25_000
+        c.get { throw IOException("down") }
+        val (v, f) = Freshness.track { c.get { throw IOException("still down") } }
+        assertEquals("v1", v)
+        assertTrue(f.isStale)
+        assertEquals(25, f.ageSeconds)
     }
 
     @Test
