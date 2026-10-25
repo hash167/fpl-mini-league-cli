@@ -139,9 +139,10 @@ fun needsAutoSub(minutes: Int, teamFixtures: List<FixtureInfo>): Boolean {
     return teamFixtures.any { it.started }
 }
 
+/** A bench player can still come on if they've played, or their fixture is under way but not over. */
 fun benchCanComeOn(minutes: Int, teamFixtures: List<FixtureInfo>): Boolean {
     if (minutes > 0) return true
-    return teamFixtures.any { it.started }
+    return teamFixtures.any { it.started } && !allFixturesFinished(teamFixtures)
 }
 
 fun playerRemaining(teamFixtures: List<FixtureInfo>): Boolean {
@@ -252,7 +253,8 @@ fun computeAutoSubs(
         if (!blankEligible) continue
         val replacement = bench.firstOrNull { b ->
             b.element !in usedBench &&
-                (b.minutes > 0 || b.fixtureStarted) &&
+                // Played, or still could (fixture started, not finished). 0' at full time can't come on.
+                (b.minutes > 0 || (b.fixtureStarted && !b.fixturesFinished)) &&
                 isEligibleSwapElements(playingTypes(), starter.element, b.element, b.elementType)
         } ?: continue
         playing.remove(starter.element)

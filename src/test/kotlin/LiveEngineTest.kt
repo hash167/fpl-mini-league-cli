@@ -202,6 +202,37 @@ class LiveEngineTest {
     }
 
     @Test
+    fun `bench player who did not play at full time is skipped for the next eligible one`() {
+        val picks = squad(
+            starter(1, ELEMENT_GK, minutes = 90, finished = true),
+            starter(2, ELEMENT_DEF, minutes = 0, finished = true), // blank
+            starter(3, ELEMENT_DEF, minutes = 90, finished = true),
+            starter(4, ELEMENT_DEF, minutes = 90, finished = true),
+            starter(5, ELEMENT_DEF, minutes = 90, finished = true),
+            starter(6, ELEMENT_MID, minutes = 90, finished = true),
+            starter(7, ELEMENT_MID, minutes = 90, finished = true),
+            starter(8, ELEMENT_MID, minutes = 90, finished = true),
+            starter(9, ELEMENT_MID, minutes = 90, finished = true),
+            starter(10, ELEMENT_FWD, minutes = 90, finished = true),
+            starter(11, ELEMENT_FWD, minutes = 90, finished = true),
+            bench(12, ELEMENT_GK, minutes = 0, started = false),
+            bench(13, ELEMENT_DEF, minutes = 0, started = true, finished = true), // 0' at FT
+            bench(14, ELEMENT_DEF, minutes = 90, started = true, finished = true),
+            bench(15, ELEMENT_MID, minutes = 0, started = false)
+        )
+        assertEquals(listOf(AppliedSub(2, 14)), computeAutoSubs(picks))
+    }
+
+    @Test
+    fun `bench player with 0 minutes in a fixture still in progress can still come on`() {
+        val live = listOf(FixtureInfo(1, 1, 1, 2, 0, 0, started = true, finished = false, minutes = 60, kickoffTime = null))
+        val done = listOf(FixtureInfo(1, 1, 1, 2, 0, 0, started = true, finished = true, minutes = 90, kickoffTime = null))
+        assertTrue(benchCanComeOn(0, live))
+        assertFalse(benchCanComeOn(0, done))
+        assertTrue(benchCanComeOn(12, done))
+    }
+
+    @Test
     fun `bench boost disables auto-subs`() {
         val picks = squad(
             starter(1, ELEMENT_GK, minutes = 0, finished = true),
@@ -509,13 +540,13 @@ class LiveEngineTest {
         isViceCaptain = vice
     )
 
-    private fun bench(element: Int, type: Int, minutes: Int, started: Boolean) =
+    private fun bench(element: Int, type: Int, minutes: Int, started: Boolean, finished: Boolean = minutes > 0 && started) =
         AutoSubPick(
             element = element,
             position = element,
             elementType = type,
             minutes = minutes,
-            fixturesFinished = minutes > 0 && started,
+            fixturesFinished = finished,
             fixtureStarted = started,
             isCaptain = false,
             isViceCaptain = false
