@@ -118,7 +118,7 @@ docker build -t fpl-web:1.3 .
 docker run --rm -p 8080:8080 fpl-web:1.3
 ```
 
-`Dockerfile.runtime` is a JRE-only image if you already built `fpl-web-1.0.jar`.
+The runtime stage adds the OpenTelemetry Java agent and uses `docker/entrypoint.sh`, which enables the agent only when `HONEYCOMB_API_KEY` is set.
 
 ## Deploy to k3s
 

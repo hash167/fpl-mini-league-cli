@@ -1,6 +1,0 @@
-FROM fpl-web:1.28
-WORKDIR /app
-USER root
-COPY fpl-web-1.0.jar /app/app.jar
-USER 65534:65534
-ENTRYPOINT ["/app/entrypoint.sh"]
