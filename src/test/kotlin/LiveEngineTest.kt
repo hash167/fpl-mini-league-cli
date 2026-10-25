@@ -94,6 +94,13 @@ class LiveEngineTest {
     }
 
     @Test
+    fun `hit taken at the deadline is not double-counted before any points are scored`() {
+        // prev total 1800, 4-pt hit, 0 pts so far: FPL shows total_points 1796, points 0.
+        assertEquals(1800, startOfGwSeasonTotal(officialTotal = 1796, officialGwPoints = 0, transferCost = 4))
+        assertEquals(1796, liveSeasonTotal(officialTotal = 1796, officialGwPoints = 0, gwNetPoints = gwNet(0, 4), transferCost = 4))
+    }
+
+    @Test
     fun `Hashim-like start-of-GW overall arrow is millions green not mid-GW noise`() {
         val history = listOf(
             EntrySeasonSnapshot(event = 1, points = 46, totalPoints = 46, overallRank = 5_572_584, eventTransfersCost = 0),

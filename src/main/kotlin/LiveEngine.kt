@@ -11,16 +11,16 @@ fun gwNet(gross: Int, transferCost: Int): Int = gross - transferCost
 
 /**
  * Official GW `points` are GROSS. Official `total_points` is already NET of
- * `event_transfers_cost` once that GW is on the books. Peeling the gross GW
- * score without restoring the hit double-counts the hit
- * (56 - 33 + 25 = 48 instead of 56).
+ * `event_transfers_cost`: FPL deducts the hit at the deadline, before any points
+ * are scored. Peeling the gross GW score without restoring the hit double-counts
+ * the hit (56 - 33 + 25 = 48 instead of 56; at 0 pts: 1796 + (0 - 4) = 1792
+ * instead of 1796).
  *
  * Prefer previous completed GW `total_points` + live gwNet. If history is
  * missing, derive the start-of-GW total from official fields.
  */
 fun startOfGwSeasonTotal(officialTotal: Int, officialGwPoints: Int, transferCost: Int): Int =
-    if (officialGwPoints > 0) officialTotal - officialGwPoints + transferCost
-    else officialTotal
+    officialTotal - officialGwPoints + transferCost
 
 fun liveSeasonTotal(
     officialTotal: Int,
