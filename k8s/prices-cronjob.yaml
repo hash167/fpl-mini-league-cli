@@ -24,7 +24,16 @@ spec:
               env:
                 - name: CRON_TZ
                   value: Europe/London
+                - name: FPL_INGEST_TOKEN
+                  valueFrom:
+                    secretKeyRef:
+                      name: fpl-ingest
+                      key: FPL_INGEST_TOKEN
+              # POST + shared token: GET /live/prices/refresh no longer exists (it let any stray request
+              # re-baseline the nightly price snapshot).
               command:
                 - /bin/sh
                 - -c
-                - wget -qO- http://fpl-web.fpl.svc.cluster.local:8080/live/prices/refresh
+                - >-
+                  wget -qO- --post-data='' --header="X-Ingest-Token: $FPL_INGEST_TOKEN"
+                  http://fpl-web.fpl.svc.cluster.local:8080/live/prices/refresh
