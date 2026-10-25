@@ -89,7 +89,6 @@ class SseHeadersFilter : ContainerResponseFilter {
             type != null && type.type == "text" && type.subtype == "event-stream" -> {
                 response.headers.putSingle("Cache-Control", "no-cache, no-transform")
                 response.headers.putSingle("X-Accel-Buffering", "no")
-                response.headers.putSingle("Connection", "keep-alive")
             }
             path == "" || path == "sw.js" || path == "manifest.webmanifest" || (type != null && type.subtype == "html") -> {
                 response.headers.putSingle("Cache-Control", "no-cache, no-store, must-revalidate, max-age=0")
