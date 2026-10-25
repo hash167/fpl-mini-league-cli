@@ -35,6 +35,11 @@
 !k8s/**
 !.dockerignore
 
+# Repo metadata and helper scripts
+!LICENSE
+!scripts/
+!scripts/**
+
 # Secret-scanning config (2026-10-24)
 !.pre-commit-config.yaml
 !ci/
