@@ -236,3 +236,32 @@ class ScoreboardTest {
         assertFalse(espnHasLineups(null))
     }
 }
+
+class HttpEspnSourceSingleFlightTest {
+    @Test
+    fun `concurrent misses for one key share a single ESPN request`() {
+        val hits = java.util.concurrent.atomic.AtomicInteger()
+        val server = com.sun.net.httpserver.HttpServer.create(java.net.InetSocketAddress("127.0.0.1", 0), 0)
+        server.executor = java.util.concurrent.Executors.newFixedThreadPool(8)
+        server.createContext("/") { ex ->
+            hits.incrementAndGet()
+            Thread.sleep(300)
+            val body = """{"events":[]}""".toByteArray()
+            ex.sendResponseHeaders(200, body.size.toLong())
+            ex.responseBody.use { it.write(body) }
+        }
+        server.start()
+        try {
+            val src = HttpEspnSource(baseUrl = "http://127.0.0.1:${server.address.port}", timeout = java.time.Duration.ofSeconds(2))
+            val pool = java.util.concurrent.Executors.newFixedThreadPool(6)
+            val start = java.util.concurrent.CountDownLatch(1)
+            val results = (1..6).map { pool.submit<JsonObject?> { start.await(); src.scoreboard("20261025") } }
+            start.countDown()
+            results.forEach { assertNotNull(it.get(5, java.util.concurrent.TimeUnit.SECONDS)) }
+            assertEquals(1, hits.get(), "one upstream request for six concurrent callers")
+            pool.shutdownNow()
+        } finally {
+            server.stop(0)
+        }
+    }
+}

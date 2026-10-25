@@ -7,7 +7,9 @@ import java.time.Duration
 import java.time.Instant
 import java.time.ZoneOffset
 import java.time.format.DateTimeFormatter
+import java.util.concurrent.CompletableFuture
 import java.util.concurrent.ConcurrentHashMap
+import java.util.concurrent.TimeUnit
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.JsonPrimitive
@@ -47,6 +49,7 @@ class HttpEspnSource(
     }
     private val cache = ConcurrentHashMap<String, Entry>()
     private val failedUntil = ConcurrentHashMap<String, Long>()
+    private val inflight = ConcurrentHashMap<String, CompletableFuture<JsonObject?>>()
     @Volatile private var consecutiveFailures = 0
     @Volatile private var backoffUntil = 0L
 
@@ -76,6 +79,29 @@ class HttpEspnSource(
         val now = clock()
         cache[key]?.let { if (it.expiresAt > now) return it.value }
         if (now < backoffUntil || now < (failedUntil[key] ?: 0L)) return cache[key]?.value
+        // Single flight per key (like TtlCache): concurrent misses share one ESPN request.
+        val mine = CompletableFuture<JsonObject?>()
+        val running = inflight.putIfAbsent(key, mine)
+        if (running != null) {
+            return try {
+                running.get(timeout.toMillis() * 2, TimeUnit.MILLISECONDS)
+            } catch (_: Exception) {
+                cache[key]?.value
+            }
+        }
+        try {
+            val result = loadAndStore(key, now, ttl, load)
+            mine.complete(result)
+            return result
+        } catch (e: Throwable) {
+            mine.completeExceptionally(e)
+            throw e
+        } finally {
+            inflight.remove(key, mine)
+        }
+    }
+
+    private fun loadAndStore(key: String, now: Long, ttl: (JsonObject?) -> Long, load: () -> JsonObject?): JsonObject? {
         val fresh = try {
             load()
         } catch (_: Exception) {
