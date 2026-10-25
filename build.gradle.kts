@@ -27,6 +27,16 @@ dependencies {
     testImplementation(kotlin("test"))
 }
 
+val appBuild: String = (findProperty("appBuild") as String?)?.trim().orEmpty().ifEmpty { "dev" }
+
+// Single source of truth for the build version: @APP_BUILD@ in these resources becomes appBuild.
+tasks.processResources {
+    inputs.property("appBuild", appBuild)
+    filesMatching(listOf("assets/index.html", "assets/sw.js", "fpl-build.properties")) {
+        filter<org.apache.tools.ant.filters.ReplaceTokens>("tokens" to mapOf("APP_BUILD" to appBuild))
+    }
+}
+
 tasks.test {
     useJUnitPlatform()
 }

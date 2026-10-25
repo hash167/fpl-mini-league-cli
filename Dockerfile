@@ -5,7 +5,8 @@ COPY gradlew settings.gradle.kts build.gradle.kts gradle.properties ./
 COPY gradle ./gradle
 COPY src ./src
 COPY config.yml ./
-RUN chmod +x gradlew && ./gradlew --no-daemon shadowJar
+ARG APP_BUILD
+RUN chmod +x gradlew && ./gradlew --no-daemon shadowJar ${APP_BUILD:+-PappBuild=$APP_BUILD}
 
 FROM eclipse-temurin:17-jre-jammy
 WORKDIR /app

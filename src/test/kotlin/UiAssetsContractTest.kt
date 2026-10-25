@@ -82,7 +82,7 @@ class UiAssetsContractTest {
         assertTrue(html.contains("if (state.timer) return;"), "90s refresh must not be reset by the notify poll")
         assertTrue(html.contains("function freshestScore(fx)"), "strip never shows an older score than the newest data")
         assertTrue(html.contains("window.addEventListener(\"pageshow\""), "resume handling for iOS Home Screen apps")
-        assertTrue(html.contains("const APP_BUILD = \"1.43\";"), "embedded build for self-reload")
+        assertTrue(html.contains("const APP_BUILD = \"@APP_BUILD@\";"), "embedded build for self-reload (filled in by processResources)")
         assertTrue(html.contains("data.error || data.message || (\"HTTP \" + res.status)"), "server errors show the message, not a bare HTTP code")
         assertTrue(html.contains("class='mc-retry'"), "match error has a retry button")
         assertTrue(html.contains("const API_TIMEOUT_MS = 20000;"), "browser waits longer than the server's FPL deadline")
@@ -134,5 +134,17 @@ class UiAssetsContractTest {
         assertTrue(html.contains(" hit</span>"), "hit shown")
         assertTrue(html.contains("no hit ("), "WC/FH show no hit")
         assertTrue(html.contains("team.eventTransfers"), "transfer count")
+    }
+
+    @Test
+    fun `index html and sw js carry the same build as APP_BUILD`() {
+        fun res(path: String) = UiAssetsContractTest::class.java.getResource(path)!!.readText()
+        assertTrue(Regex("""\d+\.\d+.*""").matches(APP_BUILD), "APP_BUILD comes from the appBuild gradle property: " + APP_BUILD)
+        val html = res("/assets/index.html")
+        val sw = res("/assets/sw.js")
+        assertTrue(html.contains("const APP_BUILD = \"" + APP_BUILD + "\";"), "index.html build == APP_BUILD")
+        assertTrue(sw.contains("const BUILD = \"" + APP_BUILD + "\";"), "sw.js build == APP_BUILD")
+        assertTrue(!html.contains("@APP_BUILD@") && !sw.contains("@APP_BUILD@"), "no unfilled build tokens")
+        assertTrue(html.contains("navigator.serviceWorker.register(\"/sw.js?v=\" + APP_BUILD)"), "sw.js cache-bust keyed on the build")
     }
 }
