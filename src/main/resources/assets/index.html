@@ -126,9 +126,14 @@
     .mgr-rank { min-width: 3.2rem; }
     .mgr-rank span { display: block; font-size: 0.68rem; color: var(--muted); text-transform: uppercase; letter-spacing: 0.04em; }
     .mgr-rank b { font-size: 1.05rem; }
-    .mgr-live-total { text-align: right; flex: 0 0 auto; }
-    .mgr-live-total span { display: block; font-size: 0.68rem; color: var(--muted); text-transform: uppercase; letter-spacing: 0.04em; }
+    .mgr-scores { text-align: right; flex: 0 0 auto; display: flex; flex-direction: column; align-items: flex-end; gap: 0.2rem; }
+    .mgr-live-total span, .mgr-gw span { display: block; font-size: 0.68rem; color: var(--muted); text-transform: uppercase; letter-spacing: 0.04em; }
     .mgr-live-total b { display: block; font-size: 1.45rem; line-height: 1.1; color: var(--accent); }
+    .mgr-gw { margin-top: 0; }
+    .mgr-gw b { display: block; font-size: 1.05rem; line-height: 1.1; color: var(--text); font-variant-numeric: tabular-nums; }
+    .mgr-gw .hit { font-size: 0.68rem; color: var(--danger); font-weight: 650; }
+    td.gw-live { font-variant-numeric: tabular-nums; font-weight: 650; }
+    td.gw-live .hit { display: block; font-size: 0.68rem; color: var(--danger); font-weight: 650; }
     .mgr-identity { margin-top: 0.45rem; }
     .mgr-identity .team { font-size: 0.8rem; }
     .mgr-overall { margin-top: 0.25rem; font-size: 0.78rem; color: var(--muted); }
@@ -218,9 +223,11 @@
   </main>
   <script>
     const app = document.getElementById("app");
+    const API_TIMEOUT_MS = 5000;
     const state = {
       entryId: null, gameweek: null, live: false, autosubs: true, detailed: true,
-      entry: null, leagues: [], league: null, picks: null, sort: { key: "liveRank", dir: 1 },
+      entry: null, leagues: [], leaguesError: null, leaguesStale: false,
+      league: null, picks: null, sort: { key: "liveRank", dir: 1 },
       timer: null, notifyTimer: null,
       notify: false, notifySeen: {}, notifyReady: false,
       board: null, prices: null, boardFilter: "all", boardSort: { key: "livePoints", dir: -1 }, boardOpen: false
@@ -302,12 +309,23 @@
     }
 
     async function api(path) {
-      const res = await fetch(path);
-      const text = await res.text();
-      let data;
-      try { data = text ? JSON.parse(text) : {}; } catch { data = { error: text }; }
-      if (!res.ok) throw new Error(data.error || ("HTTP " + res.status));
-      return data;
+      const ctrl = new AbortController();
+      const timer = setTimeout(() => ctrl.abort(), API_TIMEOUT_MS);
+      try {
+        const res = await fetch(path, { signal: ctrl.signal });
+        const text = await res.text();
+        let data;
+        try { data = text ? JSON.parse(text) : {}; } catch { data = { error: text }; }
+        if (!res.ok) throw new Error(data.error || ("HTTP " + res.status));
+        return data;
+      } catch (err) {
+        if (err && (err.name === "AbortError" || err.name === "TimeoutError")) {
+          throw new Error("Official FPL API timed out. Try again in a moment.");
+        }
+        throw err;
+      } finally {
+        clearTimeout(timer);
+      }
     }
 
     function setPills(gw, live) {
@@ -467,16 +485,22 @@
       if (!quiet) app.innerHTML = "<p class='muted'>Loading live rank…</p>";
       try {
         const q = "?autosubs=" + state.autosubs;
-        const entry = await api("/entries/" + entryId + "/live" + q);
-        let leagues = { leagues: [] };
-        try {
-          leagues = await api("/entries/" + entryId + "/mini-leagues");
-        } catch (leagueErr) {
-          console.warn("mini-leagues failed", leagueErr);
-        }
+        const leaguesP = api("/entries/" + entryId + "/mini-leagues").then((data) => {
+          state.leaguesError = data && data.error && data.stale ? data.error : null;
+          return data;
+        }).catch((leagueErr) => {
+          state.leaguesError = leagueErr.message || "Mini-leagues failed to load";
+          return { leagues: [], stale: false };
+        });
+        const [entry, leagues] = await Promise.all([
+          api("/entries/" + entryId + "/live" + q),
+          leaguesP
+        ]);
         state.entryId = entryId;
         state.entry = entry;
         state.leagues = leagues.leagues || [];
+        state.leaguesStale = !!leagues.stale;
+        if (leagues.stale && leagues.error) state.leaguesError = leagues.error;
         state.gameweek = entry.gameweek;
         state.picks = { players: entry.players, managerName: entry.managerName, teamName: entry.teamName, livePoints: entry.gwGross, gameweek: entry.gameweek };
         setPills(entry.gameweek, entry.live);
@@ -519,7 +543,7 @@
     function render() {
       app.innerHTML = "";
       if (state.entry) app.appendChild(renderEntryCard());
-      if (state.leagues && state.leagues.length) app.appendChild(renderLeagues());
+      if ((state.leagues && state.leagues.length) || state.leaguesError || state.leaguesStale) app.appendChild(renderLeagues());
       const fixtures = (state.league && state.league.fixtures) || (state.entry && state.entry.fixtures) || [];
       if (fixtures.length) app.appendChild(renderFixtures(fixtures));
       const split = el("<div class='split'></div>");
@@ -566,8 +590,14 @@
 
     function renderLeagues() {
       const box = el("<section class='card'><div class='muted'>Mini leagues</div><div class='leagues'></div></section>");
+      if (state.leaguesStale) {
+        box.appendChild(el("<p class='note'>Showing last-good mini-leagues (official FPL API is slow or down).</p>"));
+      }
+      if (state.leaguesError && !state.leaguesStale) {
+        box.appendChild(el("<p class='error'>" + escapeHtml(state.leaguesError) + "</p>"));
+      }
       const row = box.querySelector(".leagues");
-      state.leagues.forEach((lg) => {
+      (state.leagues || []).forEach((lg) => {
         const b = el("<button type='button'>" + escapeHtml(lg.name) + " (" + lg.entryCount + ")</button>");
         if (state.league && state.league.leagueId === lg.id) b.classList.add("active");
         b.onclick = () => loadLeague(lg.id);
@@ -662,8 +692,8 @@
         ["liveRank", "Live rank"],
         ["officialRank", "Official rank"],
         ["managerName", "Manager / team"],
-        ["liveTotal", "Live total"],
-        ["gwNet", "GW net"],
+        ["liveTotal", "Overall"],
+        ["gwNet", "GW"],
         ["gwGross", "GW gross", true],
         ["playersRemaining", "Remaining"],
         ["liveOverallRankEstimate", "Live overall"],
@@ -708,6 +738,11 @@
           } else if (c[0] === "liveRank") {
             td.innerHTML = fmt(v) + " " + placeDeltaHtml(team);
           } else if (c[0] === "teamValue") td.textContent = fmtMoney(v);
+          else if (c[0] === "gwNet") {
+            td.className = "gw-live";
+            const hit = Number(team.transferCost || 0);
+            td.innerHTML = fmt(v) + (hit > 0 ? ("<span class='hit' title='Transfer hit'>-" + hit + " hit</span>") : "");
+          }
           else if (c[0] === "liveOverallRankEstimate") {
             td.innerHTML = v == null ? "—" : (fmtRank(v) + " est " + rankArrow(v, team.startOfGwOverallRank));
           }
@@ -753,7 +788,12 @@
                 "<div class='mgr-rank'><span>Live rank</span><b>" + fmt(team.liveRank) + "</b> " + placeDeltaHtml(team) + "</div>" +
                 "<div class='mgr-rank'><span>Official</span><b>" + fmt(team.officialRank) + "</b></div>" +
               "</div>" +
-              "<div class='mgr-live-total'><span>Live total</span><b>" + fmt(team.liveTotal) + "</b></div>" +
+              "<div class='mgr-scores'>" +
+                "<div class='mgr-live-total'><span>Overall</span><b>" + fmt(team.liveTotal) + "</b></div>" +
+                "<div class='mgr-gw'><span>GW</span><b>" + fmt(team.gwNet) + "</b>" +
+                  (Number(team.transferCost || 0) > 0 ? ("<span class='hit'>-" + Number(team.transferCost) + " hit</span>") : "") +
+                "</div>" +
+              "</div>" +
             "</div>" +
             "<div class='mgr-identity'><strong>" + escapeHtml(team.managerName) + "</strong>" +
               "<div class='team muted'>" + escapeHtml(team.entryName) + "</div></div>" +
@@ -978,7 +1018,6 @@
       applyBoardOpen();
       try { state.notify = localStorage.getItem("fpl.notify") === "1"; } catch (e) {}
       paintNotifyBtn();
-      await loadBoard();
       const params = new URLSearchParams(location.search);
       let entryId = Number(params.get("entry") || params.get("entryId") || 0);
       let leagueId = Number(params.get("league") || params.get("leagueId") || 0);
@@ -986,14 +1025,13 @@
         if (!entryId) entryId = Number(localStorage.getItem("fpl.entryId") || 0);
         if (!leagueId) leagueId = Number(localStorage.getItem("fpl.leagueId") || 0);
       } catch (e) {}
-      if (entryId) {
-        document.querySelector('input[name="entryId"]').value = entryId;
-        await loadEntry(entryId);
-      }
-      if (leagueId) {
-        document.querySelector('input[name="leagueId"]').value = leagueId;
-        await loadLeague(leagueId);
-      }
+      if (entryId) document.querySelector('input[name="entryId"]').value = entryId;
+      if (leagueId) document.querySelector('input[name="leagueId"]').value = leagueId;
+      await Promise.all([
+        loadBoard(),
+        entryId ? loadEntry(entryId) : Promise.resolve()
+      ]);
+      if (leagueId) await loadLeague(leagueId);
       if (state.notify && state.entryId) startNotifyPoll();
       if ("serviceWorker" in navigator) {
         navigator.serviceWorker.register("/sw.js").catch(function () {});
