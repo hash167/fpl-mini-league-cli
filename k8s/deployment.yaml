@@ -17,31 +17,89 @@ spec:
     spec:
       nodeSelector:
         kubernetes.io/hostname: randomnumber01
+      securityContext:
+        runAsUser: 65534
+        runAsGroup: 65534
+        fsGroup: 65534
       containers:
         - name: fpl-web
-          image: docker.io/library/fpl-web:1.6
+          image: docker.io/library/fpl-web:1.44
           imagePullPolicy: IfNotPresent
           ports:
             - name: http
               containerPort: 8080
+          env:
+            - name: HONEYCOMB_API_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: fpl-honeycomb
+                  key: HONEYCOMB_API_KEY
+                  optional: true
+            - name: FPL_INGEST_TOKEN
+              valueFrom:
+                secretKeyRef:
+                  name: fpl-ingest
+                  key: FPL_INGEST_TOKEN
+                  optional: true
+            - name: OTEL_SERVICE_NAME
+              value: fpl-web
+            - name: OTEL_EXPORTER_OTLP_PROTOCOL
+              value: http/protobuf
+            - name: OTEL_EXPORTER_OTLP_ENDPOINT
+              value: https://api.honeycomb.io
+            - name: OTEL_METRICS_EXPORTER
+              value: otlp
+            - name: OTEL_LOGS_EXPORTER
+              value: otlp
+            - name: OTEL_TRACES_SAMPLER
+              value: parentbased_always_on
+            - name: OTEL_BSP_SCHEDULE_DELAY
+              value: "2000"
+            - name: OTEL_RESOURCE_ATTRIBUTES
+              value: service.namespace=fpl,service.version=1.44
+            # entrypoint.sh prepends -javaagent:/app/opentelemetry-javaagent.jar to this value.
+            # Default heap was 25% of 512Mi = 128Mi, which the working set (~90Mi after 6 min) exceeded.
+            - name: JAVA_TOOL_OPTIONS
+              value: >-
+                -XX:MaxRAMPercentage=70
+                -XX:InitialRAMPercentage=25
+                -XX:+HeapDumpOnOutOfMemoryError
+                -XX:HeapDumpPath=/app/data/dumps
+                -XX:+ExitOnOutOfMemoryError
+          volumeMounts:
+            - name: overall-data
+              mountPath: /app/data
           resources:
             requests:
               cpu: 100m
-              memory: 256Mi
+              memory: 512Mi
             limits:
               cpu: 500m
-              memory: 512Mi
+              memory: 1Gi
+          # /health answers from memory only (no FPL/ESPN calls, no cache locks).
+          startupProbe:
+            httpGet:
+              path: /health
+              port: http
+            periodSeconds: 5
+            timeoutSeconds: 5
+            failureThreshold: 48
           readinessProbe:
             httpGet:
               path: /health
               port: http
-            initialDelaySeconds: 20
-            timeoutSeconds: 5
             periodSeconds: 10
+            timeoutSeconds: 5
+            failureThreshold: 3
           livenessProbe:
             httpGet:
               path: /health
               port: http
-            initialDelaySeconds: 40
-            timeoutSeconds: 5
             periodSeconds: 20
+            timeoutSeconds: 10
+            failureThreshold: 6
+      volumes:
+        - name: overall-data
+          hostPath:
+            path: /var/lib/fpl-web
+            type: DirectoryOrCreate

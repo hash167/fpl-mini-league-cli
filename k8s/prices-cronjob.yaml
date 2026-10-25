@@ -1,0 +1,39 @@
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: fpl-official-prices
+  namespace: fpl
+spec:
+  schedule: "30 3 * * *"
+  timeZone: Europe/London
+  concurrencyPolicy: Forbid
+  successfulJobsHistoryLimit: 2
+  failedJobsHistoryLimit: 3
+  jobTemplate:
+    spec:
+      backoffLimit: 2
+      template:
+        spec:
+          restartPolicy: OnFailure
+          nodeSelector:
+            kubernetes.io/hostname: randomnumber01
+          containers:
+            - name: refresh
+              image: busybox:1.36
+              imagePullPolicy: IfNotPresent
+              env:
+                - name: CRON_TZ
+                  value: Europe/London
+                - name: FPL_INGEST_TOKEN
+                  valueFrom:
+                    secretKeyRef:
+                      name: fpl-ingest
+                      key: FPL_INGEST_TOKEN
+              # POST + shared token: GET /live/prices/refresh no longer exists (it let any stray request
+              # re-baseline the nightly price snapshot).
+              command:
+                - /bin/sh
+                - -c
+                - >-
+                  wget -qO- --post-data='' --header="X-Ingest-Token: $FPL_INGEST_TOKEN"
+                  http://fpl-web.fpl.svc.cluster.local:8080/live/prices/refresh

@@ -1,0 +1,53 @@
+# Daily top-10k transfer aggregation for GW Stats. Runs on randomnumber02 and POSTs
+# the result to fpl-web, which writes /var/lib/fpl-web/top10k/{gw{N},latest}.json atomically.
+# The script lives in ConfigMap fpl-top10k-script (generated from scripts/top10k_transfers.py):
+#   kubectl -n fpl create configmap fpl-top10k-script --from-file=scripts/top10k_transfers.py --dry-run=client -o yaml | kubectl apply -f -
+# The shared token lives in Secret fpl-ingest (key FPL_INGEST_TOKEN), also mounted into fpl-web.
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: fpl-top10k-transfers
+  namespace: fpl
+spec:
+  schedule: "17 3 * * *"
+  timeZone: America/Los_Angeles
+  concurrencyPolicy: Forbid
+  successfulJobsHistoryLimit: 2
+  failedJobsHistoryLimit: 3
+  jobTemplate:
+    spec:
+      backoffLimit: 1
+      activeDeadlineSeconds: 5400
+      template:
+        spec:
+          restartPolicy: Never
+          nodeSelector:
+            kubernetes.io/hostname: randomnumber02
+          containers:
+            - name: top10k
+              image: python:3.12-alpine
+              imagePullPolicy: IfNotPresent
+              command: ["python3", "-u", "/script/top10k_transfers.py"]
+              env:
+                - name: FPL_WEB_URL
+                  value: http://fpl-web.fpl.svc.cluster.local:8080/live/gw-stats/top10k
+                - name: CONCURRENCY
+                  value: "8"
+                # Entry whose squad is starred in GW Stats; set per deployment (empty = no stars).
+                - name: MY_ENTRY
+                  value: "5498977"
+                - name: FPL_INGEST_TOKEN
+                  valueFrom:
+                    secretKeyRef:
+                      name: fpl-ingest
+                      key: FPL_INGEST_TOKEN
+              resources:
+                requests: { cpu: 50m, memory: 64Mi }
+                limits: { cpu: 500m, memory: 256Mi }
+              volumeMounts:
+                - name: script
+                  mountPath: /script
+          volumes:
+            - name: script
+              configMap:
+                name: fpl-top10k-script

@@ -1,7 +1,12 @@
+import java.io.IOException
 import java.net.URI
 import java.net.http.HttpClient
 import java.net.http.HttpRequest
 import java.net.http.HttpResponse
+import java.net.http.HttpTimeoutException
+import java.util.concurrent.ExecutionException
+import java.util.concurrent.TimeUnit
+import java.util.concurrent.TimeoutException
 import java.time.Duration
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonArray
@@ -9,16 +14,90 @@ import kotlinx.serialization.json.JsonElement
 import kotlinx.serialization.json.JsonObject
 
 const val DEFAULT_FPL_BASE_URL = "https://fantasy.premierleague.com/api"
+const val FPL_CONNECT_TIMEOUT_MS: Long = 3_000
+const val FPL_REQUEST_TIMEOUT_MS: Long = 8_000
+/** Whole-call budget including the single retry. */
+const val FPL_TOTAL_DEADLINE_MS: Long = 10_000
+
+/** status + body of one GET; throws IOException (incl. HttpTimeoutException) on transport failure. */
+fun interface FplTransport {
+    fun get(url: String, timeoutMs: Long): Pair<Int, String>
+}
+
+class HttpFplTransport(private val userAgent: String, connectTimeoutMs: Long = FPL_CONNECT_TIMEOUT_MS) : FplTransport {
+    private val http = HttpClient.newBuilder()
+        .followRedirects(HttpClient.Redirect.NORMAL)
+        .connectTimeout(Duration.ofMillis(connectTimeoutMs))
+        .build()
+
+    override fun get(url: String, timeoutMs: Long): Pair<Int, String> {
+        val request = HttpRequest.newBuilder(URI.create(url))
+            .header("Accept", "application/json")
+            .header("User-Agent", userAgent)
+            .timeout(Duration.ofMillis(timeoutMs))
+            .GET()
+            .build()
+        // HttpRequest.timeout() only covers waiting for response headers and isn't honoured on every
+        // path (e.g. a plain-http h2c upgrade), so also put a hard cap on the whole exchange.
+        val future = http.sendAsync(request, HttpResponse.BodyHandlers.ofString())
+        val response = try {
+            future.get(timeoutMs + 250, TimeUnit.MILLISECONDS)
+        } catch (e: TimeoutException) {
+            future.cancel(true)
+            throw HttpTimeoutException("FPL request timed out after ${timeoutMs}ms: $url")
+        } catch (e: ExecutionException) {
+            val cause = e.cause
+            if (cause is IOException) throw cause
+            throw IOException(cause?.message ?: "FPL request failed: $url", cause)
+        }
+        return response.statusCode() to response.body()
+    }
+}
+
+/**
+ * One retry with 200-500ms jitter, only for transport errors (IOException, incl. timeouts) and 5xx,
+ * and only while the total deadline leaves room for a meaningful second attempt.
+ */
+class RetryingGet(
+    private val transport: FplTransport,
+    private val requestTimeoutMs: Long = FPL_REQUEST_TIMEOUT_MS,
+    private val totalDeadlineMs: Long = FPL_TOTAL_DEADLINE_MS,
+    private val clock: () -> Long = { System.currentTimeMillis() },
+    private val sleeper: (Long) -> Unit = { Thread.sleep(it) },
+    private val jitterMs: () -> Long = { 200L + (Math.random() * 300).toLong() },
+    private val minAttemptMs: Long = 1_000
+) {
+    fun get(url: String): String {
+        val deadline = clock() + totalDeadlineMs
+        var attempt = 0
+        while (true) {
+            attempt += 1
+            val remaining = deadline - clock()
+            val timeout = minOf(requestTimeoutMs, remaining).coerceAtLeast(1)
+            val failure: Exception = try {
+                val (status, body) = transport.get(url, timeout)
+                if (status in 200..299) return body
+                val err = FplApiException("FPL API request failed ($status): $url", status)
+                if (status < 500) throw err
+                err
+            } catch (e: IOException) {
+                e
+            }
+            if (attempt >= 2) throw failure
+            val pause = jitterMs()
+            if (deadline - clock() - pause < minAttemptMs) throw failure
+            sleeper(pause)
+        }
+    }
+}
 
 class FplApi(
     baseUrl: String = DEFAULT_FPL_BASE_URL,
-    private val userAgent: String = "fpl-live-leagues/1.1"
+    private val userAgent: String = "fpl-live-leagues/1.1",
+    transport: FplTransport = HttpFplTransport(userAgent)
 ) : FplClient {
     private val baseUrl = baseUrl.trimEnd('/')
-    private val http = HttpClient.newBuilder()
-        .followRedirects(HttpClient.Redirect.NORMAL)
-        .connectTimeout(Duration.ofSeconds(10))
-        .build()
+    private val getter = RetryingGet(transport)
     private val json = Json { ignoreUnknownKeys = true }
 
     override fun bootstrap(): JsonObject = getJsonObject("$baseUrl/bootstrap-static/")
@@ -33,6 +112,11 @@ class FplApi(
 
     override fun eventLive(eventId: Int): JsonObject =
         getJsonObject("$baseUrl/event/$eventId/live/")
+
+    override fun allFixtures(): List<JsonObject> {
+        val array = getJson("$baseUrl/fixtures/") as? JsonArray ?: return emptyList()
+        return array.mapNotNull { it as? JsonObject }
+    }
 
     override fun fixtures(eventId: Int): List<JsonObject> {
         val element = getJson("$baseUrl/fixtures/?event=$eventId")
@@ -81,6 +165,9 @@ class FplApi(
         return parseLiveElementPoints(eventLive(eventId))
     }
 
+    override fun entryTransfers(entryId: Int, eventId: Int): List<TransferRow> =
+        parseTransfers(getJson("$baseUrl/entry/$entryId/transfers/")).filter { it.event == eventId }
+
     override fun entryPicks(entryId: Int, eventId: Int): List<PickRow> {
         return parsePicks(entryEvent(entryId, eventId))
     }
@@ -100,19 +187,7 @@ class FplApi(
         }
     }
 
-    private fun getJson(url: String): JsonElement {
-        val request = HttpRequest.newBuilder(URI.create(url))
-            .header("Accept", "application/json")
-            .header("User-Agent", userAgent)
-            .timeout(Duration.ofSeconds(15))
-            .GET()
-            .build()
-        val response = http.send(request, HttpResponse.BodyHandlers.ofString())
-        if (response.statusCode() !in 200..299) {
-            throw FplApiException("FPL API request failed (${response.statusCode()}): $url", response.statusCode())
-        }
-        return json.parseToJsonElement(response.body())
-    }
+    private fun getJson(url: String): JsonElement = json.parseToJsonElement(getter.get(url))
 }
 
 fun parseLiveElementPoints(response: JsonObject): Map<Int, Int> {
@@ -134,6 +209,21 @@ fun parsePicks(response: JsonObject): List<PickRow> {
             multiplier = obj.int("multiplier") ?: 1,
             isCaptain = obj.bool("is_captain") == true,
             isViceCaptain = obj.bool("is_vice_captain") == true
+        )
+    }
+}
+
+fun parseTransfers(response: JsonElement): List<TransferRow> {
+    val items = response as? kotlinx.serialization.json.JsonArray ?: return emptyList()
+    return items.mapNotNull { item ->
+        val obj = item as? JsonObject ?: return@mapNotNull null
+        TransferRow(
+            event = obj.int("event") ?: return@mapNotNull null,
+            elementIn = obj.int("element_in") ?: return@mapNotNull null,
+            elementOut = obj.int("element_out") ?: return@mapNotNull null,
+            elementInCost = obj.int("element_in_cost"),
+            elementOutCost = obj.int("element_out_cost"),
+            time = obj.str("time")
         )
     }
 }
@@ -258,7 +348,13 @@ fun parsePlayerInfo(bootstrap: JsonObject): Map<Int, PlayerInfo> {
                 webName = webName.ifBlank { fullName },
                 teamId = teamId,
                 teamShortName = teams[teamId].orEmpty(),
-                elementType = player.int("element_type") ?: 0
+                elementType = player.int("element_type") ?: 0,
+                nowCost = player.int("now_cost"),
+                costChangeEvent = player.int("cost_change_event"),
+                costChangeStart = player.int("cost_change_start"),
+                transfersInEvent = player.int("transfers_in_event") ?: 0,
+                transfersOutEvent = player.int("transfers_out_event") ?: 0,
+                selectedBy = player.str("selected_by_percent")
             )
         }
         .toMap()
@@ -273,6 +369,20 @@ fun parseTeamShortNames(bootstrap: JsonObject): Map<Int, String> {
             id to short
         }
         .toMap()
+}
+
+fun parseEntryHistoryCurrent(response: JsonObject): List<EntrySeasonSnapshot> {
+    return response.arr("current").mapNotNull { item ->
+        val obj = item as? JsonObject ?: return@mapNotNull null
+        val event = obj.int("event") ?: return@mapNotNull null
+        EntrySeasonSnapshot(
+            event = event,
+            points = obj.int("points") ?: 0,
+            totalPoints = obj.int("total_points") ?: 0,
+            overallRank = obj.int("overall_rank"),
+            eventTransfersCost = obj.int("event_transfers_cost") ?: 0
+        )
+    }
 }
 
 fun parseEntryProfile(response: JsonObject): Pair<String, String> {
@@ -294,3 +404,14 @@ fun historyFromEntry(entry: JsonObject, gameweek: Int): EntryEventHistory =
         eventTransfers = 0,
         eventTransfersCost = 0
     )
+
+/**
+ * The picks endpoint's entry_history.overall_rank is only refreshed at FPL's periodic rank
+ * recalculation and lags summary_overall_rank during a live gameweek. For the entry's current
+ * gameweek prefer the summary rank from entry/{id}/; finished gameweeks keep the history rank.
+ */
+fun resolveOverallRank(historyRank: Int?, profile: JsonObject, gameweek: Int): Int? {
+    val currentEvent = profile.int("current_event")
+    val summaryRank = profile.int("summary_overall_rank")
+    return if (currentEvent == gameweek && summaryRank != null) summaryRank else historyRank
+}

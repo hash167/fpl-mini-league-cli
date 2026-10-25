@@ -47,7 +47,13 @@ data class PlayerInfo(
     val webName: String,
     val teamId: Int,
     val teamShortName: String,
-    val elementType: Int
+    val elementType: Int,
+    val nowCost: Int? = null,
+    val costChangeEvent: Int? = null,
+    val costChangeStart: Int? = null,
+    val transfersInEvent: Int? = null,
+    val transfersOutEvent: Int? = null,
+    val selectedBy: String? = null
 )
 
 data class TeamLiveSummary(
@@ -77,13 +83,22 @@ data class PlayerLiveRow(
     val autoSubOut: Boolean = false,
     val onBench: Boolean = false,
     val fixtureStatus: String = "",
-    val eo: Double? = null
+    val eo: Double? = null,
+    val nowCost: Double? = null,
+    val costChangeEvent: Double? = null,
+    val costChangeStart: Double? = null
 )
 
 data class MiniLeaguesResponse(
     val entryId: Int,
     val gameweek: Int,
-    val leagues: List<MiniLeagueRef>
+    val leagues: List<MiniLeagueRef>,
+    /** True when some FPL data behind this response was served from cache because FPL failed. */
+    val stale: Boolean = false,
+    /** Age in seconds of the oldest cached FPL data used to build this response. */
+    val dataAge: Long = 0,
+    /** Set when the list may be incomplete or old (FPL slow); the UI shows it as a note. */
+    val error: String? = null
 )
 
 data class MiniLeagueRef(
@@ -103,7 +118,11 @@ data class LiveLeagueResponse(
     val entryCount: Int? = null,
     val shown: Int = 0,
     val live: Boolean = false,
-    val fixtures: List<FixtureView> = emptyList()
+    val fixtures: List<FixtureView> = emptyList(),
+    /** True when some FPL data behind this response was served from cache because FPL failed. */
+    val stale: Boolean = false,
+    /** Age in seconds of the oldest cached FPL data used to build this response. */
+    val dataAge: Long = 0
 )
 
 data class TeamLiveStanding(
@@ -114,12 +133,16 @@ data class TeamLiveStanding(
     val livePoints: Int,
     val liveRank: Int = 0,
     val officialRank: Int = 0,
+    val lastRank: Int? = null,
     val liveTotal: Int = 0,
     val gwNet: Int = 0,
     val gwGross: Int = 0,
     val transferCost: Int = 0,
     val playersRemaining: Int = 0,
     val overallRank: Int? = null,
+    val overallRankLabel: String = "official",
+    val startOfGwOverallRank: Int? = null,
+    val liveOverallRankEstimate: Long? = null,
     val freeTransfers: Int? = null,
     val teamValue: Double? = null,
     val bank: Double? = null,
@@ -128,7 +151,15 @@ data class TeamLiveStanding(
     val confirmedBonus: Int = 0,
     val autosubsApplied: Int = 0,
     val captainStatus: String = "",
-    val players: List<PlayerLiveRow> = emptyList()
+    val players: List<PlayerLiveRow> = emptyList(),
+    /** Transfers made for this gameweek (FPL entry_history.event_transfers). */
+    val eventTransfers: Int = 0,
+    /** The transfers themselves (OUT -> IN), when FPL returned them. */
+    val transfers: List<TransferView> = emptyList(),
+    /** False when the transfer list couldn't be loaded (the count above is still FPL's). */
+    val transfersListed: Boolean = true,
+    /** Automatic subs (official, plus provisional live ones while matches are on). */
+    val autoSubs: List<AutoSubView> = emptyList()
 )
 
 data class EntryPicksResponse(
@@ -146,6 +177,7 @@ data class EntryPicksResponse(
     val officialGwPoints: Int = 0,
     val overallRank: Int? = null,
     val overallRankLabel: String = "official",
+    val startOfGwOverallRank: Int? = null,
     val teamValue: Double? = null,
     val bank: Double? = null,
     val freeTransfers: Int? = null,
@@ -172,6 +204,7 @@ data class EntryLiveResponse(
     val officialGwPoints: Int,
     val overallRank: Int?,
     val overallRankLabel: String,
+    val startOfGwOverallRank: Int? = null,
     val teamValue: Double?,
     val bank: Double?,
     val freeTransfers: Int?,
@@ -188,7 +221,11 @@ data class EntryLiveResponse(
     val liveOverallRankEstimate: Long? = null,
     val liveOverallEstimateAvailable: Boolean = false,
     val liveOverallSampleAgeSeconds: Long? = null,
-    val liveOverallSampleCount: Int? = null
+    val liveOverallSampleCount: Int? = null,
+    /** True when some FPL data behind this response was served from cache because FPL failed. */
+    val stale: Boolean = false,
+    /** Age in seconds of the oldest cached FPL data used to build this response. */
+    val dataAge: Long = 0
 )
 
 data class FixtureView(
@@ -250,7 +287,48 @@ data class EntryEventHistory(
     val bank: Int?,
     val value: Int?,
     val eventTransfers: Int,
+    val eventTransfersCost: Int,
+    val previousTotalPoints: Int? = null
+)
+
+data class EntrySeasonSnapshot(
+    val event: Int,
+    val points: Int,
+    val totalPoints: Int,
+    val overallRank: Int?,
     val eventTransfersCost: Int
+)
+
+/** One row of entry/{id}/transfers/. Costs are in tenths of a million. */
+data class TransferRow(
+    val event: Int,
+    val elementIn: Int,
+    val elementOut: Int,
+    val elementInCost: Int? = null,
+    val elementOutCost: Int? = null,
+    val time: String? = null
+)
+
+/** A gameweek transfer as shown in a mini-league team's detail: OUT -> IN. */
+data class TransferView(
+    val outElement: Int,
+    val outName: String,
+    val outTeam: String,
+    val outCost: Double?,
+    val inElement: Int,
+    val inName: String,
+    val inTeam: String,
+    val inCost: Double?
+)
+
+/** An automatic substitution: [inName] came off the bench for [outName]. */
+data class AutoSubView(
+    val outElement: Int,
+    val outName: String,
+    val inElement: Int,
+    val inName: String,
+    /** True when computed live by this app (FPL hasn't applied it officially yet). */
+    val provisional: Boolean
 )
 
 data class AppliedSub(
@@ -295,4 +373,59 @@ data class LiveOverallBandStatus(
     val endRank: Int,
     val nB: Int,
     val nSlice: Int
+)
+
+
+data class LiveBoardResponse(
+    val gameweek: Int,
+    val live: Boolean,
+    val fixtures: List<FixtureView> = emptyList(),
+    val estimateNote: String,
+    val players: List<LiveBoardPlayer>,
+    /** True when some FPL data behind this response was served from cache because FPL failed. */
+    val stale: Boolean = false,
+    /** Age in seconds of the oldest cached FPL data used to build this response. */
+    val dataAge: Long = 0
+)
+
+data class LiveBoardPlayer(
+    val id: Int,
+    val webName: String,
+    val team: String,
+    val position: String,
+    val minutes: Int,
+    val livePoints: Int,
+    val nowCost: Int,
+    val costChangeEvent: Int,
+    val transfersInEvent: Int,
+    val transfersOutEvent: Int,
+    val netTransfers: Int,
+    val selectedBy: String?,
+    val priceEstimate: String,
+    val priceEstimateReason: String,
+    /** "First Second" from bootstrap; used only for client-side player search. */
+    val fullName: String = ""
+)
+
+
+data class PriceRiseEstimate(
+    val id: Int,
+    val webName: String,
+    val team: String,
+    val position: String,
+    val nowCost: Int,
+    val nowPounds: String,
+    val netTransfers: Int,
+    val transfersInEvent: Int,
+    val transfersOutEvent: Int,
+    val selectedBy: String?,
+    val priceEstimate: String,
+    val priceEstimateReason: String
+)
+
+data class PriceRiseEstimatesResponse(
+    val computedAt: String,
+    val gameweek: Int,
+    val estimateNote: String,
+    val rises: List<PriceRiseEstimate>
 )

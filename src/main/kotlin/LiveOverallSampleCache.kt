@@ -1,7 +1,18 @@
+import java.io.File
+import java.nio.file.AtomicMoveNotSupportedException
+import java.nio.file.Files
+import java.nio.file.StandardCopyOption
 import java.util.concurrent.Callable
 import java.util.concurrent.Executors
 import java.util.concurrent.atomic.AtomicBoolean
+import kotlinx.serialization.Serializable
+import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonObject
+import org.slf4j.LoggerFactory
+import telemetry.FplTelemetry
+
+/** Local/dev default. In the container WORKDIR is /app, so this is /app/data/live-overall-snapshot.json. */
+const val DEFAULT_OVERALL_SNAPSHOT_PATH = "data/live-overall-snapshot.json"
 
 data class LiveOverallSnapshot(
     val loadedAtMs: Long,
@@ -26,6 +37,8 @@ data class LiveOverallSnapshot(
  * Hourly stratified sample of overall classic league 314.
  * Identities and live totals share the same TTL. A cold cache never blocks
  * the live-rank request path — callers peek and kick a background refresh.
+ * The last successful snapshot is atomically written to disk so a process
+ * restart can peek immediately; stale-while-revalidate still applies.
  */
 class LiveOverallSampleCache(
     private val api: FplClient,
@@ -37,9 +50,13 @@ class LiveOverallSampleCache(
     private val minPopulatedBands: Int = MIN_POPULATED_BANDS,
     private val minSuccessfulSamples: Int = MIN_SUCCESSFUL_SAMPLES,
     private val clock: () -> Long = { System.currentTimeMillis() },
-    private val sleeper: (Long) -> Unit = { ms -> if (ms > 0) Thread.sleep(ms) }
+    private val sleeper: (Long) -> Unit = { ms -> if (ms > 0) Thread.sleep(ms) },
+    snapshotPath: String? = null
 ) {
-    @Volatile private var snapshot: LiveOverallSnapshot? = null
+    private val snapshotFile: File? =
+        snapshotPath?.trim()?.takeIf { it.isNotEmpty() }?.let { File(it) }
+
+    @Volatile private var snapshot: LiveOverallSnapshot? = loadSnapshot()
     @Volatile private var backoffUntilMs: Long = 0
     @Volatile private var failCount: Int = 0
     private val refreshing = AtomicBoolean(false)
@@ -68,7 +85,9 @@ class LiveOverallSampleCache(
                 snapshot = refreshBlocking(gameweek)
                 failCount = 0
                 backoffUntilMs = 0
-            } catch (_: Exception) {
+            } catch (e: Exception) {
+                FplTelemetry.incrementSampleRefreshError(e)
+                log.warn("live overall sample refresh failed: {}", e.message)
                 failCount += 1
                 val shift = failCount.coerceIn(1, 6) - 1
                 val delay = (30_000L * (1L shl shift)).coerceAtMost(15 * 60_000L)
@@ -117,6 +136,13 @@ class LiveOverallSampleCache(
     }
 
     private fun refreshBlocking(gameweek: Int): LiveOverallSnapshot {
+        return FplTelemetry.span("fpl.sample.refresh") { span ->
+            span.setAttribute("fpl.gameweek", gameweek.toLong())
+            refreshBlockingInner(gameweek)
+        }
+    }
+
+    private fun refreshBlockingInner(gameweek: Int): LiveOverallSnapshot {
         val bootstrap = api.bootstrap()
         val totalPlayers = bootstrap.int("total_players")
             ?: throw IllegalStateException("bootstrap-static missing total_players")
@@ -132,7 +158,7 @@ class LiveOverallSampleCache(
                 nSlice = band.nSlice
             )
         }
-        return LiveOverallSnapshot(
+        val next = LiveOverallSnapshot(
             loadedAtMs = clock(),
             gameweek = gameweek,
             totalPlayers = totalPlayers,
@@ -140,6 +166,8 @@ class LiveOverallSampleCache(
             samples = samples,
             available = !isSampleThin(stats, minPopulatedBands, minSuccessfulSamples)
         )
+        persistSnapshot(next)
+        return next
     }
 
     private data class SampleIdentity(
@@ -191,6 +219,7 @@ class LiveOverallSampleCache(
                 val live = try {
                     evaluate(ident.entryId, gameweek)
                 } catch (_: Exception) {
+                    FplTelemetry.incrementEvaluateError()
                     null
                 } ?: return@Callable null
                 SampledManager(
@@ -210,6 +239,116 @@ class LiveOverallSampleCache(
             }
         }
     }
+
+    private fun persistSnapshot(snap: LiveOverallSnapshot) {
+        val dest = snapshotFile ?: return
+        var tmp: File? = null
+        try {
+            val parent = dest.parentFile ?: File(".")
+            if (!parent.exists() && !parent.mkdirs()) {
+                log.warn("Could not create overall snapshot directory {}", parent)
+                return
+            }
+            tmp = File(parent, dest.name + ".tmp")
+            tmp.writeText(persistJson.encodeToString(PersistedOverallSnapshot.serializer(), snap.toPersisted()))
+            try {
+                Files.move(
+                    tmp.toPath(),
+                    dest.toPath(),
+                    StandardCopyOption.REPLACE_EXISTING,
+                    StandardCopyOption.ATOMIC_MOVE
+                )
+            } catch (_: AtomicMoveNotSupportedException) {
+                Files.move(tmp.toPath(), dest.toPath(), StandardCopyOption.REPLACE_EXISTING)
+            }
+        } catch (e: Exception) {
+            log.warn("Failed to persist overall snapshot to {}: {}", dest, e.message)
+            try {
+                tmp?.delete()
+            } catch (_: Exception) {
+            }
+        }
+    }
+
+    private fun loadSnapshot(): LiveOverallSnapshot? {
+        val dest = snapshotFile ?: return null
+        return try {
+            if (!dest.isFile) return null
+            val persisted = persistJson.decodeFromString(PersistedOverallSnapshot.serializer(), dest.readText())
+            persisted.toSnapshot(minPopulatedBands, minSuccessfulSamples)
+        } catch (e: Exception) {
+            log.warn("Failed to load overall snapshot from {}: {}", dest, e.message)
+            null
+        }
+    }
+
+    companion object {
+        private val log = LoggerFactory.getLogger(LiveOverallSampleCache::class.java)
+        private val persistJson = Json {
+            ignoreUnknownKeys = true
+            encodeDefaults = true
+        }
+    }
 }
 
 fun totalPlayers(bootstrap: JsonObject): Int? = bootstrap.int("total_players")
+
+@Serializable
+private data class PersistedOverallSnapshot(
+    val loadedAtMs: Long,
+    val gameweek: Int,
+    val totalPlayers: Int,
+    val bands: List<PersistedBandStats>,
+    val samples: List<PersistedSampledManager>
+)
+
+@Serializable
+private data class PersistedBandStats(
+    val index: Int,
+    val startRank: Int,
+    val endRank: Int,
+    val nB: Int,
+    val nSlice: Int
+)
+
+@Serializable
+private data class PersistedSampledManager(
+    val entryId: Int,
+    val officialRank: Int,
+    val bandIndex: Int,
+    val liveTotal: Int,
+    val multipliers: Map<Int, Int>
+)
+
+private fun LiveOverallSnapshot.toPersisted() = PersistedOverallSnapshot(
+    loadedAtMs = loadedAtMs,
+    gameweek = gameweek,
+    totalPlayers = totalPlayers,
+    bands = bands.map {
+        PersistedBandStats(it.index, it.startRank, it.endRank, it.nB, it.nSlice)
+    },
+    samples = samples.map {
+        PersistedSampledManager(it.entryId, it.officialRank, it.bandIndex, it.liveTotal, it.multipliers)
+    }
+)
+
+private fun PersistedOverallSnapshot.toSnapshot(
+    minPopulatedBands: Int,
+    minSuccessfulSamples: Int
+): LiveOverallSnapshot? {
+    if (loadedAtMs < 0 || gameweek <= 0 || totalPlayers <= 0) return null
+    val bandStats = bands.map {
+        BandSampleStats(it.index, it.startRank, it.endRank, it.nB, it.nSlice)
+    }
+    val managers = samples.map {
+        SampledManager(it.entryId, it.officialRank, it.bandIndex, it.liveTotal, it.multipliers)
+    }
+    return LiveOverallSnapshot(
+        loadedAtMs = loadedAtMs,
+        gameweek = gameweek,
+        totalPlayers = totalPlayers,
+        bands = bandStats,
+        samples = managers,
+        available = !isSampleThin(bandStats, minPopulatedBands, minSuccessfulSamples)
+    )
+}

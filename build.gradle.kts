@@ -22,7 +22,19 @@ dependencies {
     implementation("org.jetbrains.kotlinx:kotlinx-serialization-json:1.6.3")
     implementation("io.dropwizard:dropwizard-core:$dropwizardVersion")
     implementation("com.fasterxml.jackson.module:jackson-module-kotlin:2.17.1")
+    implementation("io.opentelemetry:opentelemetry-api:1.49.0")
+    implementation("org.glassfish.jersey.media:jersey-media-sse:3.0.17")
     testImplementation(kotlin("test"))
+}
+
+val appBuild: String = (findProperty("appBuild") as String?)?.trim().orEmpty().ifEmpty { "dev" }
+
+// Single source of truth for the build version: @APP_BUILD@ in these resources becomes appBuild.
+tasks.processResources {
+    inputs.property("appBuild", appBuild)
+    filesMatching(listOf("assets/index.html", "assets/sw.js", "fpl-build.properties")) {
+        filter<org.apache.tools.ant.filters.ReplaceTokens>("tokens" to mapOf("APP_BUILD" to appBuild))
+    }
 }
 
 tasks.test {

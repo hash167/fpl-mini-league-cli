@@ -1,9 +1,13 @@
 import java.util.concurrent.Callable
+import java.util.concurrent.ExecutionException
 import java.util.concurrent.Executors
+import java.util.concurrent.TimeUnit
+import java.util.concurrent.TimeoutException
 import kotlinx.serialization.json.JsonObject
 
 const val MINI_LEAGUE_ENTRY_LIMIT = 50
 const val LIVE_LEAGUE_CAP = 50
+const val STANDINGS_EVAL_BUDGET_MS: Long = 15_000
 
 fun isMiniLeague(entryCount: Int, hasNext: Boolean): Boolean =
     entryCount < MINI_LEAGUE_ENTRY_LIMIT && !hasNext
@@ -72,12 +76,82 @@ fun buildPlayerLiveRows(
     }.sortedBy { it.position }
 }
 
-class FplService(private val api: FplClient) {
+class FplService(
+    private val api: FplClient,
+    overallSnapshotPath: String? = null,
+    pricesSnapshotPath: String? = DEFAULT_PRICES_SNAPSHOT_PATH,
+    private val clock: () -> Long = { System.currentTimeMillis() },
+    private val espn: EspnSource? = null
+) {
     private val pool = Executors.newFixedThreadPool(8)
+    /** The overall-rank sampler evaluates hundreds of random managers: bypass the per-manager caches so
+     *  it doesn't evict the teams people are looking at (bootstrap/live/fixtures stay cached via [api]). */
+    private val sampleApi: FplClient = (api as? CachingFplClient)?.inner ?: api
     private val overallCache = LiveOverallSampleCache(
         api = api,
-        evaluate = { entryId, gameweek -> evaluateSampleEntry(entryId, gameweek) }
+        evaluate = { entryId, gameweek -> evaluateSampleEntry(entryId, gameweek) },
+        snapshotPath = overallSnapshotPath
     )
+    private val priceStore = OfficialPriceSnapshotStore(pricesSnapshotPath, clock)
+
+    fun liveScoreboard(gameweek: Int?): ScoreboardResponse {
+        val gw = gameweek ?: currentGameweek()
+        return buildScoreboard(gw, api.fixtures(gw), api.bootstrap(), espn)
+    }
+
+    fun matchDetail(fixtureId: Int, gameweek: Int?, entryId: Int?): MatchDetail {
+        var gw = gameweek ?: currentGameweek()
+        var gwFixtures = api.fixtures(gw)
+        var fixture = gwFixtures.firstOrNull { it.int("id") == fixtureId }
+        if (fixture == null) {
+            // The requested/current GW does not contain this fixture (e.g. a previous-GW fixture opened
+            // from a stale link): resolve its real gameweek from the season fixture list.
+            val actualGw = api.allFixtures().firstOrNull { it.int("id") == fixtureId }?.int("event")
+            if (actualGw != null && actualGw != gw) {
+                gw = actualGw
+                gwFixtures = api.fixtures(gw)
+                fixture = gwFixtures.firstOrNull { it.int("id") == fixtureId }
+            }
+        }
+        if (fixture == null) throw FplApiException("Fixture $fixtureId not found in GW $gw", 404)
+        val squad = if (entryId == null) emptyList() else try {
+            api.entryPicks(entryId, gw)
+        } catch (_: Exception) {
+            emptyList()
+        }
+        val bootstrap = api.bootstrap()
+        val base = buildMatchDetail(fixture, gw, bootstrap, api.eventLive(gw), gwFixtures, squad, entryId)
+        val enriched = espn?.let { source ->
+            try {
+                enrichWithEspn(source, base, bootstrap, squad)
+            } catch (_: Exception) {
+                null
+            }
+        }
+        val merged = applyEspn(base, enriched)
+        val table = try {
+            val all = api.allFixtures().ifEmpty { gwFixtures }
+            val standings = espn?.let { runCatching { it.standings() }.getOrNull() }
+            // The open match's ESPN score is fresher than FPL's while it's in play.
+            val overrides = enriched?.takeIf { it.state == "in" && it.homeScore != null && it.awayScore != null }
+                ?.let { mapOf(fixtureId to (it.homeScore!! to it.awayScore!!)) } ?: emptyMap()
+            buildLeagueTable(all, bootstrap, standings, base.home.id to base.away.id, overrides)
+        } catch (_: Exception) {
+            null
+        }
+        return merged.copy(table = table)
+    }
+
+    /** Per-stat points for one player, read from the cached event-live tree (small response, no new caches). */
+    fun playerBreakdown(elementId: Int, gameweek: Int?): PlayerBreakdown {
+        val gw = gameweek ?: currentGameweek()
+        val bootstrap = api.bootstrap()
+        val live = api.eventLive(gw)
+        return buildPlayerBreakdown(
+            elementId, gw, live, parseFixtures(api.fixtures(gw)), parsePlayerInfo(bootstrap),
+            parseTeamShortNames(bootstrap), parseLiveElementStats(live)
+        ) ?: throw FplApiException("Player $elementId not found", 404)
+    }
 
     fun currentGameweek(): Int {
         return currentGameweekId(api.bootstrap())
@@ -94,13 +168,34 @@ class FplService(private val api: FplClient) {
     }
 
     fun miniLeagues(entryId: Int): MiniLeaguesResponse {
-        val gameweek = currentGameweek()
-        val leagues = api.userClassicLeagues(entryId).mapNotNull { league ->
-            val page = standingsIfMini(league) ?: return@mapNotNull null
-            val entryCount = page.totalEntries ?: page.results.size
-            MiniLeagueRef(id = league.id, name = league.name, entryCount = entryCount)
+        val (response, freshness) = Freshness.track {
+            val gameweek = currentGameweek()
+            var failed = 0
+            val leagues = api.userClassicLeagues(entryId).mapNotNull { league ->
+                if (isSystemLeague(league.leagueType)) return@mapNotNull null
+                val page = try {
+                    api.leagueStandingsPage(league.id, 1)
+                } catch (_: Exception) {
+                    failed += 1
+                    return@mapNotNull null
+                }
+                val entryCount = page.totalEntries ?: page.results.size
+                if (!isMiniLeague(entryCount, page.hasNext)) return@mapNotNull null
+                MiniLeagueRef(id = league.id, name = league.name, entryCount = entryCount)
+            }
+            MiniLeaguesResponse(
+                entryId = entryId,
+                gameweek = gameweek,
+                leagues = leagues,
+                error = if (failed > 0) "FPL is slow: $failed league${if (failed == 1) "" else "s"} couldn't be checked right now." else null
+            )
         }
-        return MiniLeaguesResponse(entryId = entryId, gameweek = gameweek, leagues = leagues)
+        val stale = freshness.isStale || response.error != null
+        return response.copy(
+            stale = stale,
+            dataAge = freshness.ageSeconds,
+            error = response.error ?: if (stale) "FPL is slow: showing saved leagues." else null
+        )
     }
 
     fun miniLeagueSummaries(entryId: Int): List<LeagueSummary> {
@@ -133,11 +228,20 @@ class FplService(private val api: FplClient) {
         liveLeague(leagueId, gameweek, applyAutosubs = true)
 
     fun liveLeague(leagueId: Int, gameweek: Int?, applyAutosubs: Boolean): LiveLeagueResponse {
+        val (r, f) = Freshness.track { liveLeagueInner(leagueId, gameweek, applyAutosubs) }
+        return r.copy(stale = f.isStale, dataAge = f.ageSeconds)
+    }
+
+    private fun liveLeagueInner(leagueId: Int, gameweek: Int?, applyAutosubs: Boolean): LiveLeagueResponse {
         val gw = gameweek ?: currentGameweek()
         val snapshot = liveSnapshot(gw)
         val paged = pageStandings(leagueId, LIVE_LEAGUE_CAP)
         val evaluated = evaluateStandings(paged.results, snapshot, applyAutosubs)
-        val ranked = assignLiveRanks(evaluated)
+        overallCache.requestRefresh(gw)
+        val estimate = overallCache.peek()
+        val ranked = assignLiveRanks(evaluated).map { team ->
+            team.copy(liveOverallRankEstimate = estimate?.rankFor(team.liveTotal))
+        }
         return LiveLeagueResponse(
             leagueId = leagueId,
             gameweek = gw,
@@ -197,9 +301,12 @@ class FplService(private val api: FplClient) {
         } catch (_: Exception) {
             "" to ""
         }
+        val snapshots = entrySeasonHistory(entryId)
+        val history = withPreviousTotal(event.history, gameweek, snapshots)
+        val startRank = startOfGwOverallRank(snapshots, gameweek)
         val squad = evaluateLiveSquad(
             picks = event.picks,
-            history = event.history,
+            history = history,
             activeChip = event.activeChip,
             officialSubs = event.automaticSubs,
             players = snapshot.players,
@@ -217,14 +324,15 @@ class FplService(private val api: FplClient) {
             teamName = profile.second.ifBlank { null },
             gwGross = squad.gwGross,
             gwNet = squad.gwNet,
-            transferCost = event.history.eventTransfersCost,
+            transferCost = history.eventTransfersCost,
             liveTotal = squad.liveTotal,
-            officialTotal = event.history.totalPoints,
-            officialGwPoints = event.history.points,
-            overallRank = event.history.overallRank,
+            officialTotal = history.totalPoints,
+            officialGwPoints = history.points,
+            overallRank = resolveOverallRank(history.overallRank, profileJson, gameweek),
             overallRankLabel = "official",
-            teamValue = tenthsToMillions(event.history.value),
-            bank = tenthsToMillions(event.history.bank),
+            startOfGwOverallRank = startRank,
+            teamValue = tenthsToMillions(history.value),
+            bank = tenthsToMillions(history.bank),
             freeTransfers = null,
             activeChip = chipLabel(event.activeChip),
             projectedBonus = squad.projectedBonus,
@@ -238,6 +346,11 @@ class FplService(private val api: FplClient) {
     }
 
     fun entryLive(entryId: Int, gameweek: Int?, applyAutosubs: Boolean): EntryLiveResponse {
+        val (r, f) = Freshness.track { entryLiveInner(entryId, gameweek, applyAutosubs) }
+        return r.copy(stale = f.isStale, dataAge = f.ageSeconds)
+    }
+
+    private fun entryLiveInner(entryId: Int, gameweek: Int?, applyAutosubs: Boolean): EntryLiveResponse {
         val gw = gameweek ?: currentGameweek()
         val picks = entryPicksLive(entryId, gw, applyAutosubs)
         val snapshot = liveSnapshot(gw)
@@ -258,6 +371,7 @@ class FplService(private val api: FplClient) {
             officialGwPoints = picks.officialGwPoints,
             overallRank = picks.overallRank,
             overallRankLabel = "official",
+            startOfGwOverallRank = picks.startOfGwOverallRank,
             teamValue = picks.teamValue,
             bank = picks.bank,
             freeTransfers = picks.freeTransfers,
@@ -278,6 +392,65 @@ class FplService(private val api: FplClient) {
         )
     }
 
+    fun liveBoard(gameweek: Int? = null): LiveBoardResponse {
+        val (r, f) = Freshness.track { liveBoardInner(gameweek) }
+        return r.copy(stale = f.isStale, dataAge = f.ageSeconds)
+    }
+
+    private fun liveBoardInner(gameweek: Int?): LiveBoardResponse {
+        val gw = gameweek ?: currentGameweek()
+        val snapshot = liveSnapshot(gw)
+        val rows = snapshot.players.values.map { info ->
+            val live = snapshot.liveStats[info.id]
+            val tin = info.transfersInEvent ?: 0
+            val tout = info.transfersOutEvent ?: 0
+            LiveBoardPlayer(
+                id = info.id,
+                webName = info.webName,
+                team = info.teamShortName,
+                position = elementTypeName(info.elementType),
+                minutes = live?.minutes ?: 0,
+                livePoints = live?.totalPoints ?: 0,
+                nowCost = info.nowCost ?: 0,
+                costChangeEvent = info.costChangeEvent ?: 0,
+                transfersInEvent = tin,
+                transfersOutEvent = tout,
+                netTransfers = tin - tout,
+                selectedBy = info.selectedBy,
+                priceEstimate = "stable",
+                priceEstimateReason = "",
+                fullName = info.name
+            )
+        }
+        return LiveBoardResponse(
+            gameweek = gw,
+            live = snapshot.live,
+            fixtures = snapshot.fixtureViews,
+            estimateNote = PRICE_ESTIMATE_NOTE,
+            players = applyPriceEstimates(rows)
+        )
+    }
+
+
+    fun estimatePriceRises(): PriceRiseEstimatesResponse {
+        val bootstrap = api.bootstrap()
+        val gw = currentGameweekId(bootstrap)
+            ?: throw IllegalStateException("Could not determine current gameweek from FPL bootstrap data.")
+        return PriceRiseEstimatesResponse(
+            computedAt = OfficialPriceSnapshotStore.iso(clock()),
+            gameweek = gw,
+            estimateNote = PRICE_ESTIMATE_NOTE + " Estimate before tonight's official change.",
+            rises = estimateLikelyRises(parsePlayerInfo(bootstrap).values)
+        )
+    }
+
+    fun officialPrices(): OfficialPricesResponse = priceStore.latest()
+
+    fun refreshOfficialPrices(): OfficialPricesResponse {
+        val players = parsePlayerInfo(api.bootstrap()).values
+        return priceStore.refresh(players)
+    }
+
     fun liveOverallEstimateStatus(gameweek: Int? = null): LiveOverallEstimateStatus {
         val gw = try {
             gameweek ?: currentGameweek()
@@ -288,6 +461,19 @@ class FplService(private val api: FplClient) {
         return overallCache.status(gw)
     }
 
+    private fun entrySeasonHistory(entryId: Int, client: FplClient = api): List<EntrySeasonSnapshot> {
+        return try {
+            parseEntryHistoryCurrent(client.entryHistory(entryId))
+        } catch (_: Exception) {
+            emptyList()
+        }
+    }
+
+    private fun withPreviousTotal(history: EntryEventHistory, gameweek: Int, snapshots: List<EntrySeasonSnapshot>): EntryEventHistory {
+        val previous = previousEventTotal(snapshots, gameweek)
+        return if (previous == null) history else history.copy(previousTotalPoints = previous)
+    }
+
     private fun attachEo(players: List<PlayerLiveRow>, estimate: LiveOverallSnapshot?): List<PlayerLiveRow> {
         if (estimate == null || !estimate.available) return players
         return players.map { row -> row.copy(eo = estimate.eoFor(row.element)) }
@@ -296,15 +482,17 @@ class FplService(private val api: FplClient) {
     private fun evaluateSampleEntry(entryId: Int, gameweek: Int): SampledLive? {
         val snapshot = liveSnapshot(gameweek)
         val raw = try {
-            api.entryEvent(entryId, gameweek)
+            sampleApi.entryEvent(entryId, gameweek)
         } catch (_: Exception) {
             return null
         }
         if (raw.isEmpty()) return null
         val event = parseEntryEventPicks(raw)
+        val snapshots = entrySeasonHistory(entryId, sampleApi)
+        val history = withPreviousTotal(event.history, gameweek, snapshots)
         val squad = evaluateLiveSquad(
             picks = event.picks,
-            history = event.history,
+            history = history,
             activeChip = event.activeChip,
             officialSubs = event.automaticSubs,
             players = snapshot.players,
@@ -413,12 +601,42 @@ class FplService(private val api: FplClient) {
     ): List<TeamLiveStanding> {
         if (standings.isEmpty()) return emptyList()
         val futures = standings.map { standing ->
-            pool.submit(Callable {
+            pool.submit(Freshness.wrap(Callable {
                 evaluateStanding(standing, snapshot, applyAutosubs)
-            })
+            }))
         }
-        return futures.map { it.get() }
+        // One shared budget for the whole table: a slow team falls back to its official standing
+        // instead of holding the response (each FPL call is already capped at ~10s with retry).
+        val deadline = System.currentTimeMillis() + STANDINGS_EVAL_BUDGET_MS
+        return standings.zip(futures).map { (standing, future) ->
+            val left = (deadline - System.currentTimeMillis()).coerceAtLeast(1)
+            try {
+                future.get(left, TimeUnit.MILLISECONDS)
+            } catch (_: TimeoutException) {
+                future.cancel(true)
+                Freshness.stale(0)
+                officialOnly(standing)
+            } catch (e: ExecutionException) {
+                throw e.cause ?: e
+            }
+        }
     }
+
+    /** Fallback row when a team's live evaluation didn't finish in time: FPL's own league numbers. */
+    private fun officialOnly(standing: StandingRow): TeamLiveStanding = TeamLiveStanding(
+        rank = standing.rank,
+        entryId = standing.entryId,
+        entryName = standing.entryName,
+        managerName = standing.managerName,
+        livePoints = standing.eventTotal ?: 0,
+        officialRank = standing.rank,
+        lastRank = standing.lastRank,
+        liveTotal = standing.officialTotal ?: 0,
+        gwNet = standing.eventTotal ?: 0,
+        gwGross = standing.eventTotal ?: 0,
+        overallRankLabel = "official",
+        players = emptyList()
+    )
 
     private fun evaluateStanding(
         standing: StandingRow,
@@ -453,9 +671,17 @@ class FplService(private val api: FplClient) {
         } else {
             parseEntryEventPicks(raw)
         }
+        val profileJson = try {
+            api.entry(standing.entryId)
+        } catch (_: Exception) {
+            JsonObject(emptyMap())
+        }
+        val snapshots = entrySeasonHistory(standing.entryId)
+        val history = withPreviousTotal(event.history, snapshot.gameweek, snapshots)
+        val startRank = startOfGwOverallRank(snapshots, snapshot.gameweek)
         val squad = evaluateLiveSquad(
             picks = event.picks,
-            history = event.history,
+            history = history,
             activeChip = event.activeChip,
             officialSubs = event.automaticSubs,
             players = snapshot.players,
@@ -464,6 +690,16 @@ class FplService(private val api: FplClient) {
             bonusSheet = snapshot.bonusSheet,
             applyAutosubs = applyAutosubs
         )
+        // Only ask FPL for the list when this team actually made transfers (most haven't).
+        var transfersListed = true
+        val transferRows = if (history.eventTransfers > 0) {
+            try {
+                api.entryTransfers(standing.entryId, snapshot.gameweek)
+            } catch (_: Exception) {
+                transfersListed = false
+                emptyList()
+            }
+        } else emptyList()
         return TeamLiveStanding(
             rank = standing.rank,
             entryId = standing.entryId,
@@ -472,21 +708,28 @@ class FplService(private val api: FplClient) {
             livePoints = squad.gwGross,
             liveRank = 0,
             officialRank = standing.rank,
+            lastRank = standing.lastRank,
             liveTotal = squad.liveTotal,
             gwNet = squad.gwNet,
             gwGross = squad.gwGross,
-            transferCost = event.history.eventTransfersCost,
+            transferCost = history.eventTransfersCost,
             playersRemaining = squad.playersRemaining,
-            overallRank = event.history.overallRank,
+            overallRank = resolveOverallRank(history.overallRank, profileJson, snapshot.gameweek),
+            overallRankLabel = "official",
+            startOfGwOverallRank = startRank,
             freeTransfers = null,
-            teamValue = tenthsToMillions(event.history.value),
-            bank = tenthsToMillions(event.history.bank),
+            teamValue = tenthsToMillions(history.value),
+            bank = tenthsToMillions(history.bank),
             activeChip = chipLabel(event.activeChip),
             projectedBonus = squad.projectedBonus,
             confirmedBonus = squad.confirmedBonus,
             autosubsApplied = squad.autosubsApplied,
             captainStatus = squad.captainStatus,
-            players = squad.players
+            players = squad.players,
+            eventTransfers = history.eventTransfers,
+            transfers = transferViews(transferRows, snapshot.players),
+            transfersListed = transfersListed,
+            autoSubs = autoSubViews(squad.appliedSubs, event.automaticSubs, snapshot.players)
         )
     }
 

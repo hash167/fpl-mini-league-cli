@@ -10,11 +10,45 @@ const val MIN_FWD = 1
 fun gwNet(gross: Int, transferCost: Int): Int = gross - transferCost
 
 /**
- * FPL's official season total already includes official GW points once they land.
- * Subtract those so live GW net is not double-counted.
+ * Official GW `points` are GROSS. Official `total_points` is already NET of
+ * `event_transfers_cost`: FPL deducts the hit at the deadline, before any points
+ * are scored. Peeling the gross GW score without restoring the hit double-counts
+ * the hit (56 - 33 + 25 = 48 instead of 56; at 0 pts: 1796 + (0 - 4) = 1792
+ * instead of 1796).
+ *
+ * Prefer previous completed GW `total_points` + live gwNet. If history is
+ * missing, derive the start-of-GW total from official fields.
  */
-fun liveSeasonTotal(officialTotal: Int, officialGwPoints: Int, gwNetPoints: Int): Int =
-    officialTotal - officialGwPoints + gwNetPoints
+fun startOfGwSeasonTotal(officialTotal: Int, officialGwPoints: Int, transferCost: Int): Int =
+    officialTotal - officialGwPoints + transferCost
+
+fun liveSeasonTotal(
+    officialTotal: Int,
+    officialGwPoints: Int,
+    gwNetPoints: Int,
+    transferCost: Int = 0,
+    previousTotal: Int? = null
+): Int {
+    val startTotal = previousTotal ?: startOfGwSeasonTotal(officialTotal, officialGwPoints, transferCost)
+    return startTotal + gwNetPoints
+}
+
+/** Positive = improved (green). Baseline is start-of-GW official overall, not current official. */
+fun rankMovement(liveRank: Long?, baselineRank: Long?): Long? {
+    if (liveRank == null || baselineRank == null) return null
+    if (liveRank <= 0L || baselineRank <= 0L) return null
+    return baselineRank - liveRank
+}
+
+fun startOfGwOverallRank(history: List<EntrySeasonSnapshot>, gameweek: Int): Int? {
+    if (gameweek <= 1) return null
+    return history.firstOrNull { it.event == gameweek - 1 }?.overallRank
+}
+
+fun previousEventTotal(history: List<EntrySeasonSnapshot>, gameweek: Int): Int? {
+    if (gameweek <= 1) return 0
+    return history.firstOrNull { it.event == gameweek - 1 }?.totalPoints
+}
 
 fun tenthsToMillions(value: Int?): Double? = value?.let { it / 10.0 }
 
@@ -93,15 +127,22 @@ fun allFixturesFinished(teamFixtures: List<FixtureInfo>): Boolean =
 fun anyFixtureStarted(teamFixtures: List<FixtureInfo>): Boolean =
     teamFixtures.any { it.started }
 
+/**
+ * Prospective live autosub eligibility (live-board style, not official FT-only).
+ * A blank starter can be replaced once their fixture has kicked off (started /
+ * in progress / finished). Empty fixture list = no game this GW → eligible.
+ * Pre-kickoff blanks must wait.
+ */
 fun needsAutoSub(minutes: Int, teamFixtures: List<FixtureInfo>): Boolean {
     if (minutes > 0) return false
     if (teamFixtures.isEmpty()) return true
-    return teamFixtures.all { fixtureFinished(it) }
+    return teamFixtures.any { it.started }
 }
 
+/** A bench player can still come on if they've played, or their fixture is under way but not over. */
 fun benchCanComeOn(minutes: Int, teamFixtures: List<FixtureInfo>): Boolean {
     if (minutes > 0) return true
-    return teamFixtures.any { it.started }
+    return teamFixtures.any { it.started } && !allFixturesFinished(teamFixtures)
 }
 
 fun playerRemaining(teamFixtures: List<FixtureInfo>): Boolean {
@@ -175,8 +216,9 @@ fun isEligibleSwapElements(
 
 /**
  * Apply official FPL automatic_subs first, then compute any remaining
- * prospective subs the way FPL does (bench order, GK-only-for-GK,
- * 3 DEF / 2 MID / 1 FWD minimums).
+ * prospective live autosubs (bench order, GK-only-for-GK, 3 DEF / 2 MID /
+ * 1 FWD minimums). Starters with 0' are eligible once their fixture has
+ * started (in progress or finished); never before kickoff.
  */
 fun computeAutoSubs(
     picks: List<AutoSubPick>,
@@ -205,10 +247,14 @@ fun computeAutoSubs(
 
     for (starter in starters) {
         if (starter.element !in playing) continue
-        if (!starter.fixturesFinished || starter.minutes > 0) continue
+        // Live prospective: 0' after kickoff (or no fixture / finished). Not before KO.
+        val blankEligible = starter.minutes == 0 &&
+            (starter.fixtureStarted || starter.fixturesFinished)
+        if (!blankEligible) continue
         val replacement = bench.firstOrNull { b ->
             b.element !in usedBench &&
-                (b.minutes > 0 || b.fixtureStarted) &&
+                // Played, or still could (fixture started, not finished). 0' at full time can't come on.
+                (b.minutes > 0 || (b.fixtureStarted && !b.fixturesFinished)) &&
                 isEligibleSwapElements(playingTypes(), starter.element, b.element, b.elementType)
         } ?: continue
         playing.remove(starter.element)
@@ -233,7 +279,8 @@ fun playingXi(picks: List<AutoSubPick>, subs: List<AppliedSub>): Set<Int> {
 fun armbandHolder(picks: List<AutoSubPick>, playing: Set<Int>): Int? {
     val cap = picks.firstOrNull { it.isCaptain } ?: return null
     val vc = picks.firstOrNull { it.isViceCaptain }
-    val captainDoneBlank = cap.fixturesFinished && cap.minutes == 0
+    // Align with live autosubs: blank captain after kickoff hands armband to VC.
+    val captainDoneBlank = cap.minutes == 0 && (cap.fixtureStarted || cap.fixturesFinished)
     return if (!captainDoneBlank) {
         cap.element
     } else if (vc != null && (vc.element in playing || !vc.fixturesFinished)) {
@@ -269,6 +316,25 @@ data class ProjectedBonusSheet(
     val extraByElement: Map<Int, Int>
 )
 
+/** BPS/bonus candidates for one fixture (shared by the bonus sheet and the per-player breakdown). */
+fun bonusCandidates(
+    fixture: FixtureInfo,
+    liveStats: Map<Int, LiveElementStats>,
+    players: Map<Int, PlayerInfo>
+): List<BonusCandidate> = players.values
+    .filter { it.teamId == fixture.teamH || it.teamId == fixture.teamA }
+    .map { info ->
+        val stats = liveStats[info.id]
+        val minutes = stats?.minutes ?: 0
+        val bps = fixture.bpsByElement[info.id]
+            ?: stats?.bps
+            ?: 0
+        val official = fixture.officialBonusByElement[info.id]
+            ?: stats?.officialBonusByFixture?.get(fixture.id)
+            ?: if ((stats?.explainFixtureIds?.size ?: 0) <= 1) (stats?.bonus ?: 0) else 0
+        BonusCandidate(info.id, minutes, bps, official)
+    }
+
 fun buildBonusSheet(
     fixtures: List<FixtureInfo>,
     liveStats: Map<Int, LiveElementStats>,
@@ -280,20 +346,7 @@ fun buildBonusSheet(
 
     for (fixture in fixtures) {
         if (!fixture.started) continue
-        val onFixture = players.values
-            .filter { it.teamId == fixture.teamH || it.teamId == fixture.teamA }
-            .map { info ->
-                val stats = liveStats[info.id]
-                val minutes = stats?.minutes ?: 0
-                val bps = fixture.bpsByElement[info.id]
-                    ?: stats?.bps
-                    ?: 0
-                val official = fixture.officialBonusByElement[info.id]
-                    ?: stats?.officialBonusByFixture?.get(fixture.id)
-                    ?: if ((stats?.explainFixtureIds?.size ?: 0) <= 1) (stats?.bonus ?: 0) else 0
-                BonusCandidate(info.id, minutes, bps, official)
-            }
-        val (awards, isConfirmed) = fixtureBonusAwards(onFixture)
+        val (awards, isConfirmed) = fixtureBonusAwards(bonusCandidates(fixture, liveStats, players))
         for ((elementId, amount) in awards) {
             if (isConfirmed) {
                 confirmed[elementId] = (confirmed[elementId] ?: 0) + amount
@@ -400,14 +453,23 @@ fun evaluateLiveSquad(
             autoSubIn = pick.element in subbedIn,
             autoSubOut = pick.element in subbedOut,
             onBench = pick.element !in playing,
-            fixtureStatus = fixtureStatus(teamFixtures)
+            fixtureStatus = fixtureStatus(teamFixtures),
+            nowCost = tenthsToMillions(info?.nowCost),
+            costChangeEvent = tenthsToMillions(info?.costChangeEvent),
+            costChangeStart = tenthsToMillions(info?.costChangeStart)
         )
     }.sortedBy { it.position }
 
     val gwGross = teamLivePoints(rows)
     val transferCost = history.eventTransfersCost
     val net = gwNet(gwGross, transferCost)
-    val liveTotal = liveSeasonTotal(history.totalPoints, history.points, net)
+    val liveTotal = liveSeasonTotal(
+        officialTotal = history.totalPoints,
+        officialGwPoints = history.points,
+        gwNetPoints = net,
+        transferCost = transferCost,
+        previousTotal = history.previousTotalPoints
+    )
 
     val remaining = rows.count { !it.onBench && playerRemaining(players[it.element]?.let { info -> fixturesForTeam(info.teamId, fixtures) } ?: emptyList()) }
 
@@ -430,4 +492,37 @@ fun evaluateLiveSquad(
         captainStatus = capStatus,
         appliedSubs = subs
     )
+}
+
+
+private fun playerLabel(players: Map<Int, PlayerInfo>, element: Int): String =
+    players[element]?.let { it.webName.ifBlank { it.name } } ?: "#$element"
+
+/** Gameweek transfers in the order they were made, with player names. */
+fun transferViews(rows: List<TransferRow>, players: Map<Int, PlayerInfo>): List<TransferView> =
+    rows.sortedBy { it.time ?: "" }.map { t ->
+        TransferView(
+            outElement = t.elementOut,
+            outName = playerLabel(players, t.elementOut),
+            outTeam = players[t.elementOut]?.teamShortName ?: "",
+            outCost = tenthsToMillions(t.elementOutCost),
+            inElement = t.elementIn,
+            inName = playerLabel(players, t.elementIn),
+            inTeam = players[t.elementIn]?.teamShortName ?: "",
+            inCost = tenthsToMillions(t.elementInCost)
+        )
+    }
+
+/** Applied autosubs as "IN came on for OUT"; anything FPL hasn't applied yet is provisional. */
+fun autoSubViews(applied: List<AppliedSub>, official: List<AppliedSub>, players: Map<Int, PlayerInfo>): List<AutoSubView> {
+    val officialSet = official.toSet()
+    return applied.map { sub ->
+        AutoSubView(
+            outElement = sub.elementOut,
+            outName = playerLabel(players, sub.elementOut),
+            inElement = sub.elementIn,
+            inName = playerLabel(players, sub.elementIn),
+            provisional = sub !in officialSet
+        )
+    }
 }
