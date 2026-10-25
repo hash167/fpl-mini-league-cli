@@ -368,6 +368,30 @@
       border-top: 1px solid var(--line);
     }
     .lf-card.expanded .lf-detail { display: block; }
+    .lf-moves {
+      display: grid; gap: 0.35rem; margin: 0 0 0.55rem; padding: 0.5rem 0.6rem;
+      background: #f8fafc; border: 1px solid var(--line); border-radius: 12px;
+    }
+    .lf-moves .mv-head {
+      display: flex; flex-wrap: wrap; align-items: center; gap: 0.35rem;
+      font-size: 0.78rem; font-weight: 750; color: var(--card-ink);
+    }
+    .lf-moves .mv-head .mv-hit { color: var(--rank-down); }
+    .lf-moves .mv-head .mv-free { color: var(--card-muted); font-weight: 600; }
+    .lf-moves ul { list-style: none; margin: 0; padding: 0; display: grid; gap: 0.2rem; }
+    .lf-moves li {
+      font-size: 0.78rem; color: var(--card-text); line-height: 1.35;
+      overflow-wrap: anywhere;
+    }
+    .lf-moves li .mv-out { color: var(--rank-down); font-weight: 650; }
+    .lf-moves li .mv-in { color: var(--accent); font-weight: 650; }
+    .lf-moves li .mv-team { color: var(--card-muted); font-size: 0.68rem; }
+    .lf-moves .mv-prov {
+      font-size: 0.62rem; font-weight: 700; color: #92400e; background: #fffbeb;
+      border: 1px solid #fde68a; border-radius: 999px; padding: 0.05rem 0.35rem; margin-left: 0.2rem;
+    }
+    .lf-moves .mv-note { font-size: 0.7rem; color: var(--card-muted); }
+    .mini-pill.tr { color: var(--card-text); }
     .lf-meta { display: flex; flex-wrap: wrap; gap: 0.3rem; margin-bottom: 0.45rem; }
     .scorer-pills { display: flex; flex-wrap: wrap; gap: 0.3rem; margin-top: 0.15rem; }
     .scorer-pill {
@@ -1387,7 +1411,7 @@
 
     // ---- live GW scoreboard for the fixtures strip: 10s refresh while any match is live ----
     const SCOREBOARD_POLL_MS = 10000;
-    const APP_BUILD = "1.41";
+    const APP_BUILD = "1.42";
     function scoreboardFor(id) {
       const sb = state.scoreboard;
       if (!sb || sb.gameweek !== state.gameweek) return null;
@@ -1677,6 +1701,8 @@
         const hit = Number(team.transferCost || 0);
         const pills = [];
         if (team.activeChip) pills.push("<span class='mini-pill chip'>" + escapeHtml(team.activeChip) + "</span>");
+        const nTr = Number(team.eventTransfers) || 0;
+        if (nTr > 0) pills.push("<span class='mini-pill tr' title='" + nTr + " transfer" + (nTr === 1 ? "" : "s") + " this GW'>" + nTr + "T</span>");
         if (team.overallRank != null) pills.push("<span class='mini-pill'><b>OR</b> " + fmtRank(team.overallRank) + "</span>");
         const pillRow = pills.length ? ("<div class='lf-pills'>" + pills.join("") + "</div>") : "";
 
@@ -1732,8 +1758,7 @@
       if (team.liveOverallRankEstimate != null) {
         meta.push("<span class='mini-pill'>Live OR " + fmtRank(team.liveOverallRankEstimate) + " est</span>");
       }
-      if (Number(team.autosubsApplied) > 0) meta.push("<span class='mini-pill'>Autosubs " + team.autosubsApplied + "</span>");
-      const metaHtml = meta.length ? ("<div class='lf-meta'>" + meta.join("") + "</div>") : "";
+      const metaHtml = (meta.length ? ("<div class='lf-meta'>" + meta.join("") + "</div>") : "") + movesHtml(team);
 
       const players = team.players || [];
       if (!players.length) {
@@ -1761,6 +1786,36 @@
         "<div class='lf-squad'>" + xi.map(plCell).join("") + "</div>" +
         (bench.length ? ("<div class='muted' style='margin:0.35rem 0 0.15rem;font-size:0.7rem;color:#6b7280'>Bench</div><div class='lf-squad'>" + bench.map(plCell).join("") + "</div>") : "") +
         (bdHere ? "<div class='lf-bd'>" + bdPanelHtml(bdCtx, state.bd.id) + "</div>" : "");
+    }
+
+    const CHIP_NAMES = { WC: "Wildcard", FH: "Free Hit", BB: "Bench Boost", TC: "Triple Captain", AM: "Assistant Manager" };
+    // Transfers made this GW (OUT -> IN, hit, chip) and automatic subs for one mini-league team.
+    function movesHtml(team) {
+      const n = Number(team.eventTransfers) || 0;
+      const hit = Number(team.transferCost) || 0;
+      const chip = team.activeChip || "";
+      const chipName = CHIP_NAMES[chip] || chip;
+      const unlimited = chip === "WC" || chip === "FH";
+      const head = ["<span>" + (n ? (n + " transfer" + (n === 1 ? "" : "s")) : "No transfers") + "</span>"];
+      if (hit > 0) head.push("<span class='mv-hit'>-" + hit + " hit</span>");
+      else if (n > 0) head.push("<span class='mv-free'>" + (unlimited ? "no hit (" + escapeHtml(chipName) + ")" : "no hit") + "</span>");
+      if (chip) head.push("<span class='mini-pill chip' title='" + escapeHtml(chipName) + "'>" + escapeHtml(chip) + "</span>" +
+        (unlimited ? "" : "<span class='mv-free'>" + escapeHtml(chipName) + "</span>"));
+      const tr = team.transfers || [];
+      const trList = tr.length
+        ? "<ul class='mv-transfers'>" + tr.map((t) =>
+            "<li><span class='mv-out'>" + escapeHtml(t.outName) + "</span>" + (t.outTeam ? " <span class='mv-team'>" + escapeHtml(t.outTeam) + "</span>" : "") +
+            " → <span class='mv-in'>" + escapeHtml(t.inName) + "</span>" + (t.inTeam ? " <span class='mv-team'>" + escapeHtml(t.inTeam) + "</span>" : "") + "</li>").join("") + "</ul>"
+        : (n > 0 ? "<div class='mv-note'>" + (team.transfersListed === false ? "Transfer list unavailable right now (FPL slow)." : "Transfer list not available yet.") + "</div>" : "");
+      const subs = team.autoSubs || [];
+      const anyProv = subs.some((x) => x.provisional);
+      const subsHtml = subs.length
+        ? "<div class='mv-head'><span>Autosubs " + subs.length + "</span>" + (anyProv ? "<span class='mv-free'>live, until FPL confirms</span>" : "") + "</div>" +
+          "<ul class='mv-subs'>" + subs.map((x) =>
+            "<li><span class='mv-in'>" + escapeHtml(x.inName) + "</span> came on for <span class='mv-out'>" + escapeHtml(x.outName) + "</span>" +
+            (x.provisional ? "<span class='mv-prov'>provisional</span>" : "") + "</li>").join("") + "</ul>"
+        : "";
+      return "<div class='lf-moves'><div class='mv-head'>" + head.join("") + "</div>" + trList + subsHtml + "</div>";
     }
 
     function scorerPills(team) {

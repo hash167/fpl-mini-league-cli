@@ -573,8 +573,16 @@ class FakeFplClient(
     private val fixtureList: List<JsonObject> = emptyList(),
     private val historyByEntry: Map<Int, JsonObject> = emptyMap(),
     private val entryEvents: Map<Pair<Int, Int>, JsonObject> = emptyMap(),
-    private val allFixtureList: List<JsonObject> = emptyList()
+    private val allFixtureList: List<JsonObject> = emptyList(),
+    private val transfersByEntry: Map<Int, List<TransferRow>> = emptyMap(),
+    private val transfersError: Exception? = null
 ) : FplClient {
+    val transfersRequested = java.util.Collections.synchronizedList(mutableListOf<Int>())
+    override fun entryTransfers(entryId: Int, eventId: Int): List<TransferRow> {
+        transfersRequested += entryId
+        transfersError?.let { throw it }
+        return (transfersByEntry[entryId] ?: emptyList()).filter { it.event == eventId }
+    }
     @Volatile var failWith: Exception? = null
     val standingsRequested = java.util.Collections.synchronizedList(mutableListOf<Int>())
     private fun boom() { failWith?.let { throw it } }

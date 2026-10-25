@@ -82,7 +82,7 @@ class UiAssetsContractTest {
         assertTrue(html.contains("if (state.timer) return;"), "90s refresh must not be reset by the notify poll")
         assertTrue(html.contains("function freshestScore(fx)"), "strip never shows an older score than the newest data")
         assertTrue(html.contains("window.addEventListener(\"pageshow\""), "resume handling for iOS Home Screen apps")
-        assertTrue(html.contains("const APP_BUILD = \"1.41\";"), "embedded build for self-reload")
+        assertTrue(html.contains("const APP_BUILD = \"1.42\";"), "embedded build for self-reload")
         assertTrue(html.contains("data.error || data.message || (\"HTTP \" + res.status)"), "server errors show the message, not a bare HTTP code")
         assertTrue(html.contains("class='mc-retry'"), "match error has a retry button")
         assertTrue(html.contains("const API_TIMEOUT_MS = 20000;"), "browser waits longer than the server's FPL deadline")
@@ -113,5 +113,17 @@ class UiAssetsContractTest {
         assertTrue(html.contains("addEventListener(\"visibilitychange\""), "refresh on visibility change")
         assertTrue(html.contains("stopMatchStream();"), "stream closes with the view")
         assertTrue(!Regex("background:\\s*#(0|1)[0-9a-f]{5}").containsMatchIn(css), "match view must not use dark backgrounds")
+    }
+
+    @Test
+    fun `league detail shows transfers, hit, chip and autosubs`() {
+        val html = Files.readString(Paths.get("src/main/resources/assets/index.html"))
+        assertTrue(html.contains("function movesHtml(team)"), "moves section")
+        assertTrue(html.contains("movesHtml(team)"), "moves rendered in league detail")
+        assertTrue(html.contains("came on for"), "autosub copy")
+        assertTrue(html.contains("provisional"), "live autosubs marked provisional")
+        assertTrue(html.contains(" hit</span>"), "hit shown")
+        assertTrue(html.contains("no hit ("), "WC/FH show no hit")
+        assertTrue(html.contains("team.eventTransfers"), "transfer count")
     }
 }

@@ -491,3 +491,36 @@ fun evaluateLiveSquad(
         appliedSubs = subs
     )
 }
+
+
+private fun playerLabel(players: Map<Int, PlayerInfo>, element: Int): String =
+    players[element]?.let { it.webName.ifBlank { it.name } } ?: "#$element"
+
+/** Gameweek transfers in the order they were made, with player names. */
+fun transferViews(rows: List<TransferRow>, players: Map<Int, PlayerInfo>): List<TransferView> =
+    rows.sortedBy { it.time ?: "" }.map { t ->
+        TransferView(
+            outElement = t.elementOut,
+            outName = playerLabel(players, t.elementOut),
+            outTeam = players[t.elementOut]?.teamShortName ?: "",
+            outCost = tenthsToMillions(t.elementOutCost),
+            inElement = t.elementIn,
+            inName = playerLabel(players, t.elementIn),
+            inTeam = players[t.elementIn]?.teamShortName ?: "",
+            inCost = tenthsToMillions(t.elementInCost)
+        )
+    }
+
+/** Applied autosubs as "IN came on for OUT"; anything FPL hasn't applied yet is provisional. */
+fun autoSubViews(applied: List<AppliedSub>, official: List<AppliedSub>, players: Map<Int, PlayerInfo>): List<AutoSubView> {
+    val officialSet = official.toSet()
+    return applied.map { sub ->
+        AutoSubView(
+            outElement = sub.elementOut,
+            outName = playerLabel(players, sub.elementOut),
+            inElement = sub.elementIn,
+            inName = playerLabel(players, sub.elementIn),
+            provisional = sub !in officialSet
+        )
+    }
+}

@@ -690,6 +690,16 @@ class FplService(
             bonusSheet = snapshot.bonusSheet,
             applyAutosubs = applyAutosubs
         )
+        // Only ask FPL for the list when this team actually made transfers (most haven't).
+        var transfersListed = true
+        val transferRows = if (history.eventTransfers > 0) {
+            try {
+                api.entryTransfers(standing.entryId, snapshot.gameweek)
+            } catch (_: Exception) {
+                transfersListed = false
+                emptyList()
+            }
+        } else emptyList()
         return TeamLiveStanding(
             rank = standing.rank,
             entryId = standing.entryId,
@@ -715,7 +725,11 @@ class FplService(
             confirmedBonus = squad.confirmedBonus,
             autosubsApplied = squad.autosubsApplied,
             captainStatus = squad.captainStatus,
-            players = squad.players
+            players = squad.players,
+            eventTransfers = history.eventTransfers,
+            transfers = transferViews(transferRows, snapshot.players),
+            transfersListed = transfersListed,
+            autoSubs = autoSubViews(squad.appliedSubs, event.automaticSubs, snapshot.players)
         )
     }
 

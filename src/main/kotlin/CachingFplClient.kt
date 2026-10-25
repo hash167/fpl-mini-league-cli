@@ -190,6 +190,7 @@ class BoundedTtlCaches<K : Any, T>(
 }
 
 const val ENTRY_TTL_MS: Long = 60_000
+const val TRANSFERS_TTL_MS: Long = 5 * 60_000
 
 class CachingFplClient(
     val inner: FplClient,
@@ -213,6 +214,9 @@ class CachingFplClient(
     private val leaguesCache = bounded<Int, List<LeagueRef>>("classic-leagues", maxKeys = 200, ttl = entryTtlMs)
     private val standingsCache = bounded<Pair<Int, Int>, LeagueStandingsPage>("standings", maxKeys = 200, ttl = entryTtlMs)
     private val picksCache = bounded<Pair<Int, Int>, List<PickRow>>("picks", maxKeys = 300, ttl = entryTtlMs)
+    // Keyed by (entry, gameweek) and parsed down to a handful of ints, so a new gameweek never
+    // reuses an old list and 300 keys stay tiny. Transfers for a gameweek are fixed after its deadline.
+    private val transfersCache = bounded<Pair<Int, Int>, List<TransferRow>>("transfers", maxKeys = 300, ttl = TRANSFERS_TTL_MS)
 
     override fun bootstrap(): JsonObject = bootstrapCache.get { inner.bootstrap() }
 
@@ -231,6 +235,9 @@ class CachingFplClient(
 
     override fun entryPicks(entryId: Int, eventId: Int): List<PickRow> =
         picksCache.get(entryId to eventId) { inner.entryPicks(entryId, eventId) }
+
+    override fun entryTransfers(entryId: Int, eventId: Int): List<TransferRow> =
+        transfersCache.get(entryId to eventId) { inner.entryTransfers(entryId, eventId) }
 
     override fun entry(entryId: Int): JsonObject = entryCache.get(entryId) { inner.entry(entryId) }
 

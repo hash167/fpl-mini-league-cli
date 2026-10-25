@@ -11,6 +11,8 @@ interface FplClient {
     fun entryEvent(entryId: Int, eventId: Int): JsonObject = JsonObject(emptyMap())
     fun eventLive(eventId: Int): JsonObject = JsonObject(emptyMap())
     fun fixtures(eventId: Int): List<JsonObject> = emptyList()
+    /** Transfers an entry made for [eventId] (entry/{id}/transfers/ filtered to that gameweek). */
+    fun entryTransfers(entryId: Int, eventId: Int): List<TransferRow> = emptyList()
     /** Every fixture of the season (fixtures/). */
     fun allFixtures(): List<JsonObject> = emptyList()
 }

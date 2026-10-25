@@ -151,7 +151,15 @@ data class TeamLiveStanding(
     val confirmedBonus: Int = 0,
     val autosubsApplied: Int = 0,
     val captainStatus: String = "",
-    val players: List<PlayerLiveRow> = emptyList()
+    val players: List<PlayerLiveRow> = emptyList(),
+    /** Transfers made for this gameweek (FPL entry_history.event_transfers). */
+    val eventTransfers: Int = 0,
+    /** The transfers themselves (OUT -> IN), when FPL returned them. */
+    val transfers: List<TransferView> = emptyList(),
+    /** False when the transfer list couldn't be loaded (the count above is still FPL's). */
+    val transfersListed: Boolean = true,
+    /** Automatic subs (official, plus provisional live ones while matches are on). */
+    val autoSubs: List<AutoSubView> = emptyList()
 )
 
 data class EntryPicksResponse(
@@ -289,6 +297,38 @@ data class EntrySeasonSnapshot(
     val totalPoints: Int,
     val overallRank: Int?,
     val eventTransfersCost: Int
+)
+
+/** One row of entry/{id}/transfers/. Costs are in tenths of a million. */
+data class TransferRow(
+    val event: Int,
+    val elementIn: Int,
+    val elementOut: Int,
+    val elementInCost: Int? = null,
+    val elementOutCost: Int? = null,
+    val time: String? = null
+)
+
+/** A gameweek transfer as shown in a mini-league team's detail: OUT -> IN. */
+data class TransferView(
+    val outElement: Int,
+    val outName: String,
+    val outTeam: String,
+    val outCost: Double?,
+    val inElement: Int,
+    val inName: String,
+    val inTeam: String,
+    val inCost: Double?
+)
+
+/** An automatic substitution: [inName] came off the bench for [outName]. */
+data class AutoSubView(
+    val outElement: Int,
+    val outName: String,
+    val inElement: Int,
+    val inName: String,
+    /** True when computed live by this app (FPL hasn't applied it officially yet). */
+    val provisional: Boolean
 )
 
 data class AppliedSub(

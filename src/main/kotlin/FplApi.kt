@@ -165,6 +165,9 @@ class FplApi(
         return parseLiveElementPoints(eventLive(eventId))
     }
 
+    override fun entryTransfers(entryId: Int, eventId: Int): List<TransferRow> =
+        parseTransfers(getJson("$baseUrl/entry/$entryId/transfers/")).filter { it.event == eventId }
+
     override fun entryPicks(entryId: Int, eventId: Int): List<PickRow> {
         return parsePicks(entryEvent(entryId, eventId))
     }
@@ -206,6 +209,21 @@ fun parsePicks(response: JsonObject): List<PickRow> {
             multiplier = obj.int("multiplier") ?: 1,
             isCaptain = obj.bool("is_captain") == true,
             isViceCaptain = obj.bool("is_vice_captain") == true
+        )
+    }
+}
+
+fun parseTransfers(response: JsonElement): List<TransferRow> {
+    val items = response as? kotlinx.serialization.json.JsonArray ?: return emptyList()
+    return items.mapNotNull { item ->
+        val obj = item as? JsonObject ?: return@mapNotNull null
+        TransferRow(
+            event = obj.int("event") ?: return@mapNotNull null,
+            elementIn = obj.int("element_in") ?: return@mapNotNull null,
+            elementOut = obj.int("element_out") ?: return@mapNotNull null,
+            elementInCost = obj.int("element_in_cost"),
+            elementOutCost = obj.int("element_out_cost"),
+            time = obj.str("time")
         )
     }
 }
