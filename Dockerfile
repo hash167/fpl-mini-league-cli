@@ -10,7 +10,13 @@ RUN chmod +x gradlew && ./gradlew --no-daemon shadowJar ${APP_BUILD:+-PappBuild=
 
 FROM eclipse-temurin:17-jre-jammy
 WORKDIR /app
-ADD https://github.com/open-telemetry/opentelemetry-java-instrumentation/releases/download/v2.31.0/opentelemetry-javaagent.jar /app/opentelemetry-javaagent.jar
+ARG OTEL_AGENT_VERSION=2.31.0
+ARG OTEL_AGENT_SHA256=d48673b2ff956b26d809bc34243649913d4eefd9191c4e175b686da633e0134b
+ADD https://github.com/open-telemetry/opentelemetry-java-instrumentation/releases/download/v${OTEL_AGENT_VERSION}/opentelemetry-javaagent.jar /app/opentelemetry-javaagent.jar
+# Pinned agent: fail the build if the download is not the expected jar. ADD from a URL is 0600
+# root, so make it readable by the runtime user (65534) or -javaagent fails at startup.
+RUN echo "${OTEL_AGENT_SHA256}  /app/opentelemetry-javaagent.jar" | sha256sum -c - \
+    && chmod 644 /app/opentelemetry-javaagent.jar
 COPY --from=build /src/build/libs/fpl-web-1.0.jar /app/app.jar
 COPY --from=build /src/config.yml /app/config.yml
 COPY docker/entrypoint.sh /app/entrypoint.sh
