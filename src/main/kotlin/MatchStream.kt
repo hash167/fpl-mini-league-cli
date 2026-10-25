@@ -5,6 +5,9 @@ import java.util.concurrent.ScheduledExecutorService
 import java.util.concurrent.ScheduledFuture
 import java.util.concurrent.TimeUnit
 import java.util.concurrent.atomic.AtomicLong
+import org.slf4j.LoggerFactory
+
+private val streamLog = LoggerFactory.getLogger("fpl.stream")
 
 /** One SSE client. Implementations must be non-blocking-ish and report closure. */
 interface StreamSubscriber {
@@ -83,7 +86,7 @@ class StreamHub<K : Any, T : Any>(
 
     private val channels = ConcurrentHashMap<K, Channel>()
     private val keepalive: ScheduledFuture<*> =
-        scheduler.scheduleWithFixedDelay({ safely { keepaliveTick() } }, keepaliveMs, keepaliveMs, TimeUnit.MILLISECONDS)
+        scheduler.scheduleWithFixedDelay({ safely("keepalive") { keepaliveTick() } }, keepaliveMs, keepaliveMs, TimeUnit.MILLISECONDS)
 
     fun activeMatches(): Int = channels.size
     fun totalSubscribers(): Int = channels.values.sumOf { ch -> ch.subscribers.count { !it.isClosed } }
@@ -159,7 +162,7 @@ class StreamHub<K : Any, T : Any>(
         if (running && channel.pollEvery == every) return
         channel.poller?.cancel(false)
         channel.pollEvery = every
-        channel.poller = scheduler.scheduleWithFixedDelay({ safely { poll(channel) } }, every, every, TimeUnit.MILLISECONDS)
+        channel.poller = scheduler.scheduleWithFixedDelay({ safely("poll") { poll(channel) } }, every, every, TimeUnit.MILLISECONDS)
     }
 
     @Synchronized
@@ -214,8 +217,17 @@ class StreamHub<K : Any, T : Any>(
         }
     }
 
-    private inline fun safely(block: () -> Unit) {
-        try { block() } catch (_: Throwable) { }
+    /**
+     * Scheduled-task guard: an Exception must not cancel the periodic poll/keepalive (the executor
+     * silently stops rescheduling a task that throws), so log it and carry on. Errors (OOM etc.)
+     * propagate.
+     */
+    private inline fun safely(task: String, block: () -> Unit) {
+        try {
+            block()
+        } catch (e: Exception) {
+            streamLog.warn("match stream {} failed: {}", task, e.toString(), e)
+        }
     }
 }
 
