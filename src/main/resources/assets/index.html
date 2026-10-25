@@ -159,6 +159,13 @@
     button.primary:hover { background: #047857; border-color: #047857; }
     .muted { color: var(--muted); }
     .error { color: var(--danger); white-space: pre-wrap; }
+    .stale-banner { display: flex; align-items: center; gap: 0.5rem; flex-wrap: wrap; margin: 0 0 0.6rem; padding: 0.2rem 0.4rem 0.2rem 0.75rem; min-height: 44px; border-radius: 12px; background: #fffbeb; border: 1px solid #fde68a; color: #92400e; font-size: 0.82rem; font-weight: 600; }
+    .stale-banner[hidden] { display: none; }
+    .stale-banner .sb-dot { width: 8px; height: 8px; border-radius: 50%; background: #f59e0b; flex: none; }
+    .stale-banner .sb-text { flex: 1 1 auto; min-width: 0; }
+    .stale-banner .link-btn { color: #047857; font-size: 0.82rem; }
+    .load-error { display: flex; flex-direction: column; align-items: flex-start; gap: 0.5rem; }
+    .load-error .retry-btn { min-height: 44px; padding: 0 18px; border-radius: 10px; border: 1px solid #047857; background: #047857; color: #fff; font-weight: 650; font-size: 0.9rem; }
     .card {
       background: var(--card); color: var(--card-text);
       border: 1px solid var(--line); border-radius: 14px;
@@ -696,6 +703,7 @@
   </header>
   <div id="toastHost" aria-live="polite"></div>
   <main>
+    <div class="stale-banner" id="staleBanner" role="status" aria-live="polite" hidden><i class="sb-dot" aria-hidden="true"></i><span class="sb-text" id="staleText"></span><button type="button" class="link-btn" id="staleRetry" hidden>Retry now</button></div>
     <section class="ids" id="idsBox">
       <div class="ids-summary">
         <span class="ids-text">FPL ID <b id="idsEntry">—</b><span id="idsLeagueWrap"> · League <b id="idsLeague">—</b></span></span>
@@ -746,7 +754,7 @@
   </main>
   <script>
     const app = document.getElementById("app");
-    const API_TIMEOUT_MS = 5000;
+    const API_TIMEOUT_MS = 20000;
     const state = {
       entryId: null, gameweek: null, live: false, autosubs: true,
       entry: null, leagues: [], leaguesError: null, leaguesStale: false,
@@ -922,7 +930,7 @@
       const inp = document.querySelector('input[name="entryId"]'); if (inp) inp.focus();
     });
     // "Updated Xs ago" in the app bar (replaces the static auto-refresh hint).
-    function markUpdated() { state.updatedAt = Date.now(); paintUpdated(); }
+    function markUpdated(ageSec) { state.updatedAt = Date.now() - Math.max(0, Number(ageSec) || 0) * 1000; paintUpdated(); }
     function paintUpdated() {
       const node = document.getElementById("refreshHint");
       if (!node) return;
@@ -931,7 +939,101 @@
       node.innerHTML = "<span class='u-word'>Updated </span>" + (sec < 60 ? sec + "s" : Math.round(sec / 60) + "m") + " ago";
       node.title = state.refreshLive ? "Auto-refreshing while matches are live" : "Fixtures not started";
     }
-    setInterval(paintUpdated, 5000);
+    setInterval(() => { paintUpdated(); paintStale(); }, 5000);
+
+    // ---- Resilience: last-good data per view + "FPL is slow" banner ----
+    // state.net[kind] = { failing, stale, cached, at } for kind in entry / league / board.
+    // A failed background refresh never replaces data already on screen; only a first load with
+    // nothing to show renders an error card with Retry.
+    const LAST_PREFIX = "fpl.last.";
+    const LAST_MAX_AGE_MS = 12 * 3600 * 1000;
+    state.net = { entry: null, league: null, board: null };
+    function saveLast(kind, id, data) {
+      const key = LAST_PREFIX + kind + (id != null ? "." + id : "");
+      const at = Date.now() - Math.max(0, Number(data && data.dataAge) || 0) * 1000;
+      try {
+        for (let i = localStorage.length - 1; i >= 0; i--) {
+          const k = localStorage.key(i);
+          if (k && k !== key && k.indexOf(LAST_PREFIX + kind + ".") === 0) localStorage.removeItem(k);
+        }
+        localStorage.setItem(key, JSON.stringify({ t: at, d: data }));
+      } catch (e) {
+        try { localStorage.removeItem(key); } catch (e2) {}
+      }
+    }
+    function readLast(kind, id) {
+      try {
+        const raw = localStorage.getItem(LAST_PREFIX + kind + (id != null ? "." + id : ""));
+        if (!raw) return null;
+        const o = JSON.parse(raw);
+        if (!o || !o.d || !o.t || Date.now() - o.t > LAST_MAX_AGE_MS) return null;
+        return o;
+      } catch (e) { return null; }
+    }
+    function fmtAgo(ms) {
+      const sec = Math.max(0, Math.round(ms / 1000));
+      if (sec < 60) return sec + "s ago";
+      const m = Math.round(sec / 60);
+      if (m < 60) return m + "m ago";
+      return Math.round(m / 60) + "h ago";
+    }
+    function setNet(kind, info) { state.net[kind] = info; paintStale(); }
+    function netOk(kind, data) {
+      const stale = !!(data && data.stale);
+      setNet(kind, stale ? { stale: true, at: Date.now() - (Number(data.dataAge) || 0) * 1000 } : null);
+      if (stale) scheduleRetry(); else maybeClearRetry();
+    }
+    function netFail(kind) {
+      const prev = state.net[kind];
+      setNet(kind, { failing: true, at: (prev && prev.at) || state.updatedAt || Date.now() });
+      scheduleRetry();
+    }
+    function paintStale() {
+      const node = document.getElementById("staleBanner");
+      if (!node) return;
+      const items = Object.values(state.net).filter((x) => x && (x.failing || x.stale || x.cached));
+      if (!items.length) { node.hidden = true; return; }
+      const oldest = Math.min.apply(null, items.map((x) => x.at || Date.now()));
+      const ago = fmtAgo(Date.now() - oldest);
+      const failing = items.some((x) => x.failing);
+      const stale = items.some((x) => x.stale);
+      document.getElementById("staleText").textContent = failing
+        ? "Updated " + ago + " · FPL is slow, retrying"
+        : stale ? "Updated " + ago + " · FPL is slow, showing saved data"
+        : "Saved data from " + ago + " · refreshing…";
+      document.getElementById("staleRetry").hidden = !(failing || stale);
+      node.hidden = false;
+    }
+    function refreshNow() {
+      loadBoard(true);
+      if (state.league) loadLeague(state.league.leagueId, true);
+      else if (state.entryId) loadEntry(state.entryId, true);
+    }
+    document.getElementById("staleRetry").addEventListener("click", () => {
+      if (state.retryTimer) { clearTimeout(state.retryTimer); state.retryTimer = null; }
+      refreshNow();
+    });
+    function scheduleRetry() {
+      if (state.retryTimer) return;
+      state.retryCount = (state.retryCount || 0) + 1;
+      const wait = Math.min(60000, 20000 * state.retryCount);
+      state.retryTimer = setTimeout(() => { state.retryTimer = null; refreshNow(); }, wait);
+    }
+    function maybeClearRetry() {
+      const bad = Object.values(state.net).some((x) => x && (x.failing || x.stale));
+      if (bad) return;
+      state.retryCount = 0;
+      if (state.retryTimer) { clearTimeout(state.retryTimer); state.retryTimer = null; }
+    }
+    function loadErrorCard(message, onRetry) {
+      const card = el("<section class='card load-error'><p class='error'></p><button type='button' class='retry-btn'>Retry</button></section>");
+      const slow = !message || /FPL is slow|timed out/i.test(message);
+      card.querySelector(".error").textContent = slow
+        ? "FPL is slow right now and there's no saved data on this device yet. Try again in a moment."
+        : message;
+      card.querySelector(".retry-btn").onclick = onRetry;
+      return card;
+    }
 
 
     function notifySupported() {
@@ -1050,11 +1152,7 @@
       // Keep an existing timer: the 30s notify poll calls loadEntry -> scheduleRefresh, and resetting
       // the 90s interval on every call meant it never fired (league + fixtures strip froze).
       if (state.timer) return;
-      state.timer = setInterval(() => {
-        loadBoard(true);
-        if (state.league) loadLeague(state.league.leagueId, true);
-        else if (state.entryId) loadEntry(state.entryId, true);
-      }, 90000);
+      state.timer = setInterval(refreshNow, 90000);
     }
 
     document.getElementById("search").addEventListener("submit", async (e) => {
@@ -1072,67 +1170,96 @@
       await loadLeague(id);
     });
 
+    function applyEntry(entryId, entry, leagues) {
+      state.entryId = entryId;
+      state.entry = entry;
+      state.entryError = null;
+      state.leagues = leagues.leagues || [];
+      state.leaguesStale = !!leagues.stale;
+      state.leaguesError = leagues.error || null;
+      state.gameweek = entry.gameweek;
+      // Don't clobber a team picked on the board: the 30s notify poll calls loadEntry.
+      if (!state.picks || state.picks.fromEntry) state.picks = {
+        fromEntry: true,
+        players: entry.players,
+        managerName: entry.managerName,
+        teamName: entry.teamName,
+        entryName: entry.teamName,
+        livePoints: entry.gwGross,
+        gwNet: entry.gwNet,
+        gwGross: entry.gwGross,
+        transferCost: entry.transferCost,
+        liveTotal: entry.liveTotal,
+        activeChip: entry.activeChip,
+        gameweek: entry.gameweek
+      };
+      setPills(entry.gameweek, entry.live);
+    }
+
     async function loadEntry(entryId, quiet) {
-      if (!quiet) app.innerHTML = "<p class='muted'>Loading live rank…</p>";
-      try {
-        const q = "?autosubs=" + state.autosubs;
-        const leaguesP = api("/entries/" + entryId + "/mini-leagues").then((data) => {
-          state.leaguesError = data && data.error && data.stale ? data.error : null;
-          return data;
-        }).catch((leagueErr) => {
-          state.leaguesError = leagueErr.message || "Mini-leagues failed to load";
-          return { leagues: [], stale: false };
-        });
-        const [entry, leagues] = await Promise.all([
-          api("/entries/" + entryId + "/live" + q),
-          leaguesP
-        ]);
-        state.entryId = entryId;
-        state.entry = entry;
-        state.leagues = leagues.leagues || [];
-        state.leaguesStale = !!leagues.stale;
-        if (leagues.stale && leagues.error) state.leaguesError = leagues.error;
-        state.gameweek = entry.gameweek;
-        // Don't clobber a team picked on the board: the 30s notify poll calls loadEntry.
-        if (!state.picks || state.picks.fromEntry) state.picks = {
-          fromEntry: true,
-          players: entry.players,
-          managerName: entry.managerName,
-          teamName: entry.teamName,
-          entryName: entry.teamName,
-          livePoints: entry.gwGross,
-          gwNet: entry.gwNet,
-          gwGross: entry.gwGross,
-          transferCost: entry.transferCost,
-          liveTotal: entry.liveTotal,
-          activeChip: entry.activeChip,
-          gameweek: entry.gameweek
-        };
-        setPills(entry.gameweek, entry.live);
-        markUpdated();
+      const hasData = !!(state.entry && state.entryId === entryId);
+      if (!quiet && !hasData) { state.entryError = null; app.innerHTML = "<p class='muted'>Loading live rank…</p>"; }
+      const q = "?autosubs=" + state.autosubs;
+      const leaguesP = api("/entries/" + entryId + "/mini-leagues").catch((leagueErr) => {
+        const keep = state.entryId === entryId ? (state.leagues || []) : [];
+        return { leagues: keep, stale: keep.length > 0, error: leagueErr.message || "Mini-leagues failed to load", failed: true };
+      });
+      const [entryRes, leaguesRes] = await Promise.allSettled([
+        api("/entries/" + entryId + "/live" + q),
+        leaguesP
+      ]);
+      const leagues = leaguesRes.status === "fulfilled" ? leaguesRes.value : { leagues: [] };
+      if (entryRes.status === "fulfilled") {
+        const entry = entryRes.value;
+        applyEntry(entryId, entry, leagues);
+        markUpdated(entry.dataAge);
+        netOk("entry", entry);
+        if (!leagues.failed) saveLast("entry", entryId, { entry: entry, leagues: leagues, dataAge: entry.dataAge });
         persistView();
         render();
         scheduleRefresh();
         maybeNotifySquad(entry.players);
         startNotifyPoll();
-      } catch (err) {
-        app.innerHTML = "<p class='error'>" + escapeHtml(err.message) + "</p>";
+        return;
       }
+      const err = entryRes.reason || new Error("Couldn't load from FPL.");
+      if (hasData || (quiet && state.entry)) {
+        // Keep what's on screen; banner says it's old and we're retrying.
+        netFail("entry");
+        return;
+      }
+      state.entryError = { id: entryId, message: err.message };
+      if (state.entryId !== entryId) { state.entry = null; if (state.picks && state.picks.fromEntry) state.picks = null; }
+      render();
+    }
+
+    function applyLeague(data) {
+      state.league = data;
+      state.leagueError = null;
+      state.gameweek = data.gameweek;
+      setPills(data.gameweek, data.live);
     }
 
     async function loadLeague(leagueId, quiet) {
-      if (!quiet) app.innerHTML = (app.innerHTML || "") + "<p class='muted'>Loading live table…</p>";
+      const hasData = !!(state.league && state.league.leagueId === leagueId);
+      if (!quiet && !hasData) {
+        state.leagueError = null;
+        const old = app.querySelector(".league-loading");
+        if (!old) app.appendChild(el("<p class='muted league-loading'>Loading live table…</p>"));
+      }
       try {
         const data = await api("/leagues/" + leagueId + "/live?autosubs=" + state.autosubs);
-        state.league = data;
-        state.gameweek = data.gameweek;
-        setPills(data.gameweek, data.live);
-        markUpdated();
+        applyLeague(data);
+        markUpdated(data.dataAge);
+        netOk("league", data);
+        saveLast("league", leagueId, data);
         persistView();
         render();
         scheduleRefresh();
       } catch (err) {
-        app.innerHTML = "<p class='error'>" + escapeHtml(err.message) + "</p>";
+        if (hasData || (quiet && state.league)) { netFail("league"); return; }
+        state.leagueError = { id: leagueId, message: err.message };
+        render();
       }
     }
 
@@ -1152,6 +1279,10 @@
       const keepScroll = oldRow ? oldRow.scrollLeft : 0;
       app.innerHTML = "";
       if (state.entry) app.appendChild(renderEntryCard());
+      else if (state.entryError) {
+        const id = state.entryError.id;
+        app.appendChild(loadErrorCard(state.entryError.message, () => loadEntry(id)));
+      }
       if ((state.leagues && state.leagues.length) || state.leaguesError || state.leaguesStale) app.appendChild(renderLeagues());
       const fixtures = (state.league && state.league.fixtures) || (state.entry && state.entry.fixtures) || [];
       if (fixtures.length) {
@@ -1169,6 +1300,10 @@
       }
       if (state.picks) split.appendChild(renderPicks());
       if (split.children.length) app.appendChild(split);
+      if (!state.league && state.leagueError) {
+        const lid = state.leagueError.id;
+        app.appendChild(loadErrorCard(state.leagueError.message, () => loadLeague(lid)));
+      }
     }
 
     function renderEntryCard() {
@@ -1218,7 +1353,9 @@
     function renderLeagues() {
       const box = el("<section class='card'><div class='muted'>Mini leagues</div><div class='leagues'></div></section>");
       if (state.leaguesStale) {
-        box.appendChild(el("<p class='note'>Showing last-good mini-leagues (official FPL API is slow or down).</p>"));
+        const n = el("<p class='note'></p>");
+        n.textContent = state.leaguesError || "Showing last-good mini-leagues (official FPL API is slow or down).";
+        box.appendChild(n);
       }
       if (state.leaguesError && !state.leaguesStale) {
         box.appendChild(el("<p class='error'>" + escapeHtml(state.leaguesError) + "</p>"));
@@ -1250,7 +1387,7 @@
 
     // ---- live GW scoreboard for the fixtures strip: 10s refresh while any match is live ----
     const SCOREBOARD_POLL_MS = 10000;
-    const APP_BUILD = "1.40";
+    const APP_BUILD = "1.41";
     function scoreboardFor(id) {
       const sb = state.scoreboard;
       if (!sb || sb.gameweek !== state.gameweek) return null;
@@ -1999,10 +2136,13 @@
         state.board = data;
         state.gameweek = data.gameweek;
         setPills(data.gameweek, !!(data.live || (state.entry && state.entry.live) || (state.league && state.league.live)));
+        netOk("board", data);
+        saveLast("board", null, data);
         await loadPrices(true);
         renderBoard();
         scheduleRefresh();
       } catch (err) {
+        if (state.board) { netFail("board"); return; }
         if (!quiet) document.getElementById("boardNote").textContent = err.message;
       }
     }
@@ -2075,11 +2215,35 @@
         document.getElementById("idsLeagueWrap").hidden = !leagueId;
         document.getElementById("idsBox").classList.add("collapsed");
       }
-      await Promise.all([
-        loadBoard(),
-        entryId ? loadEntry(entryId) : Promise.resolve()
+      // Paint last-good data instantly (marked "Saved data from Xm ago"), then refresh in place.
+      const lastBoard = readLast("board", null);
+      if (lastBoard) {
+        state.board = lastBoard.d;
+        setNet("board", { cached: true, at: lastBoard.t });
+        renderBoard();
+      }
+      const lastEntry = entryId ? readLast("entry", entryId) : null;
+      const lastLeague = leagueId ? readLast("league", leagueId) : null;
+      if (lastEntry && lastEntry.d.entry) {
+        applyEntry(entryId, lastEntry.d.entry, lastEntry.d.leagues || { leagues: [] });
+        setNet("entry", { cached: true, at: lastEntry.t });
+      }
+      if (lastLeague) {
+        applyLeague(lastLeague.d);
+        setNet("league", { cached: true, at: lastLeague.t });
+      }
+      if (lastEntry || lastLeague) {
+        state.updatedAt = Math.min(lastEntry ? lastEntry.t : Infinity, lastLeague ? lastLeague.t : Infinity);
+        paintUpdated();
+        persistView();
+        render();
+      }
+      // Each card loads and fails on its own.
+      await Promise.allSettled([
+        loadBoard(!!lastBoard),
+        entryId ? loadEntry(entryId, !!lastEntry) : Promise.resolve()
       ]);
-      if (leagueId) await loadLeague(leagueId);
+      if (leagueId) await loadLeague(leagueId, !!lastLeague);
       if (state.notify && state.entryId) startNotifyPoll();
       if ("serviceWorker" in navigator) {
         navigator.serviceWorker.register("/sw.js?v=" + APP_BUILD).catch(function () {});

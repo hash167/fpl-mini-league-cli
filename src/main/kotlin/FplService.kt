@@ -1,9 +1,13 @@
 import java.util.concurrent.Callable
+import java.util.concurrent.ExecutionException
 import java.util.concurrent.Executors
+import java.util.concurrent.TimeUnit
+import java.util.concurrent.TimeoutException
 import kotlinx.serialization.json.JsonObject
 
 const val MINI_LEAGUE_ENTRY_LIMIT = 50
 const val LIVE_LEAGUE_CAP = 50
+const val STANDINGS_EVAL_BUDGET_MS: Long = 15_000
 
 fun isMiniLeague(entryCount: Int, hasNext: Boolean): Boolean =
     entryCount < MINI_LEAGUE_ENTRY_LIMIT && !hasNext
@@ -80,6 +84,9 @@ class FplService(
     private val espn: EspnSource? = null
 ) {
     private val pool = Executors.newFixedThreadPool(8)
+    /** The overall-rank sampler evaluates hundreds of random managers: bypass the per-manager caches so
+     *  it doesn't evict the teams people are looking at (bootstrap/live/fixtures stay cached via [api]). */
+    private val sampleApi: FplClient = (api as? CachingFplClient)?.inner ?: api
     private val overallCache = LiveOverallSampleCache(
         api = api,
         evaluate = { entryId, gameweek -> evaluateSampleEntry(entryId, gameweek) },
@@ -161,13 +168,34 @@ class FplService(
     }
 
     fun miniLeagues(entryId: Int): MiniLeaguesResponse {
-        val gameweek = currentGameweek()
-        val leagues = api.userClassicLeagues(entryId).mapNotNull { league ->
-            val page = standingsIfMini(league) ?: return@mapNotNull null
-            val entryCount = page.totalEntries ?: page.results.size
-            MiniLeagueRef(id = league.id, name = league.name, entryCount = entryCount)
+        val (response, freshness) = Freshness.track {
+            val gameweek = currentGameweek()
+            var failed = 0
+            val leagues = api.userClassicLeagues(entryId).mapNotNull { league ->
+                if (isSystemLeague(league.leagueType)) return@mapNotNull null
+                val page = try {
+                    api.leagueStandingsPage(league.id, 1)
+                } catch (_: Exception) {
+                    failed += 1
+                    return@mapNotNull null
+                }
+                val entryCount = page.totalEntries ?: page.results.size
+                if (!isMiniLeague(entryCount, page.hasNext)) return@mapNotNull null
+                MiniLeagueRef(id = league.id, name = league.name, entryCount = entryCount)
+            }
+            MiniLeaguesResponse(
+                entryId = entryId,
+                gameweek = gameweek,
+                leagues = leagues,
+                error = if (failed > 0) "FPL is slow: $failed league${if (failed == 1) "" else "s"} couldn't be checked right now." else null
+            )
         }
-        return MiniLeaguesResponse(entryId = entryId, gameweek = gameweek, leagues = leagues)
+        val stale = freshness.isStale || response.error != null
+        return response.copy(
+            stale = stale,
+            dataAge = freshness.ageSeconds,
+            error = response.error ?: if (stale) "FPL is slow: showing saved leagues." else null
+        )
     }
 
     fun miniLeagueSummaries(entryId: Int): List<LeagueSummary> {
@@ -200,6 +228,11 @@ class FplService(
         liveLeague(leagueId, gameweek, applyAutosubs = true)
 
     fun liveLeague(leagueId: Int, gameweek: Int?, applyAutosubs: Boolean): LiveLeagueResponse {
+        val (r, f) = Freshness.track { liveLeagueInner(leagueId, gameweek, applyAutosubs) }
+        return r.copy(stale = f.isStale, dataAge = f.ageSeconds)
+    }
+
+    private fun liveLeagueInner(leagueId: Int, gameweek: Int?, applyAutosubs: Boolean): LiveLeagueResponse {
         val gw = gameweek ?: currentGameweek()
         val snapshot = liveSnapshot(gw)
         val paged = pageStandings(leagueId, LIVE_LEAGUE_CAP)
@@ -313,6 +346,11 @@ class FplService(
     }
 
     fun entryLive(entryId: Int, gameweek: Int?, applyAutosubs: Boolean): EntryLiveResponse {
+        val (r, f) = Freshness.track { entryLiveInner(entryId, gameweek, applyAutosubs) }
+        return r.copy(stale = f.isStale, dataAge = f.ageSeconds)
+    }
+
+    private fun entryLiveInner(entryId: Int, gameweek: Int?, applyAutosubs: Boolean): EntryLiveResponse {
         val gw = gameweek ?: currentGameweek()
         val picks = entryPicksLive(entryId, gw, applyAutosubs)
         val snapshot = liveSnapshot(gw)
@@ -355,6 +393,11 @@ class FplService(
     }
 
     fun liveBoard(gameweek: Int? = null): LiveBoardResponse {
+        val (r, f) = Freshness.track { liveBoardInner(gameweek) }
+        return r.copy(stale = f.isStale, dataAge = f.ageSeconds)
+    }
+
+    private fun liveBoardInner(gameweek: Int?): LiveBoardResponse {
         val gw = gameweek ?: currentGameweek()
         val snapshot = liveSnapshot(gw)
         val rows = snapshot.players.values.map { info ->
@@ -418,9 +461,9 @@ class FplService(
         return overallCache.status(gw)
     }
 
-    private fun entrySeasonHistory(entryId: Int): List<EntrySeasonSnapshot> {
+    private fun entrySeasonHistory(entryId: Int, client: FplClient = api): List<EntrySeasonSnapshot> {
         return try {
-            parseEntryHistoryCurrent(api.entryHistory(entryId))
+            parseEntryHistoryCurrent(client.entryHistory(entryId))
         } catch (_: Exception) {
             emptyList()
         }
@@ -439,13 +482,13 @@ class FplService(
     private fun evaluateSampleEntry(entryId: Int, gameweek: Int): SampledLive? {
         val snapshot = liveSnapshot(gameweek)
         val raw = try {
-            api.entryEvent(entryId, gameweek)
+            sampleApi.entryEvent(entryId, gameweek)
         } catch (_: Exception) {
             return null
         }
         if (raw.isEmpty()) return null
         val event = parseEntryEventPicks(raw)
-        val snapshots = entrySeasonHistory(entryId)
+        val snapshots = entrySeasonHistory(entryId, sampleApi)
         val history = withPreviousTotal(event.history, gameweek, snapshots)
         val squad = evaluateLiveSquad(
             picks = event.picks,
@@ -558,12 +601,42 @@ class FplService(
     ): List<TeamLiveStanding> {
         if (standings.isEmpty()) return emptyList()
         val futures = standings.map { standing ->
-            pool.submit(Callable {
+            pool.submit(Freshness.wrap(Callable {
                 evaluateStanding(standing, snapshot, applyAutosubs)
-            })
+            }))
         }
-        return futures.map { it.get() }
+        // One shared budget for the whole table: a slow team falls back to its official standing
+        // instead of holding the response (each FPL call is already capped at ~10s with retry).
+        val deadline = System.currentTimeMillis() + STANDINGS_EVAL_BUDGET_MS
+        return standings.zip(futures).map { (standing, future) ->
+            val left = (deadline - System.currentTimeMillis()).coerceAtLeast(1)
+            try {
+                future.get(left, TimeUnit.MILLISECONDS)
+            } catch (_: TimeoutException) {
+                future.cancel(true)
+                Freshness.stale(0)
+                officialOnly(standing, snapshot.gameweek)
+            } catch (e: ExecutionException) {
+                throw e.cause ?: e
+            }
+        }
     }
+
+    /** Fallback row when a team's live evaluation didn't finish in time: FPL's own league numbers. */
+    private fun officialOnly(standing: StandingRow, gameweek: Int): TeamLiveStanding = TeamLiveStanding(
+        rank = standing.rank,
+        entryId = standing.entryId,
+        entryName = standing.entryName,
+        managerName = standing.managerName,
+        livePoints = standing.eventTotal ?: 0,
+        officialRank = standing.rank,
+        lastRank = standing.lastRank,
+        liveTotal = standing.officialTotal ?: 0,
+        gwNet = standing.eventTotal ?: 0,
+        gwGross = standing.eventTotal ?: 0,
+        overallRankLabel = "official",
+        players = emptyList()
+    )
 
     private fun evaluateStanding(
         standing: StandingRow,

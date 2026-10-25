@@ -92,7 +92,13 @@ data class PlayerLiveRow(
 data class MiniLeaguesResponse(
     val entryId: Int,
     val gameweek: Int,
-    val leagues: List<MiniLeagueRef>
+    val leagues: List<MiniLeagueRef>,
+    /** True when some FPL data behind this response was served from cache because FPL failed. */
+    val stale: Boolean = false,
+    /** Age in seconds of the oldest cached FPL data used to build this response. */
+    val dataAge: Long = 0,
+    /** Set when the list may be incomplete or old (FPL slow); the UI shows it as a note. */
+    val error: String? = null
 )
 
 data class MiniLeagueRef(
@@ -112,7 +118,11 @@ data class LiveLeagueResponse(
     val entryCount: Int? = null,
     val shown: Int = 0,
     val live: Boolean = false,
-    val fixtures: List<FixtureView> = emptyList()
+    val fixtures: List<FixtureView> = emptyList(),
+    /** True when some FPL data behind this response was served from cache because FPL failed. */
+    val stale: Boolean = false,
+    /** Age in seconds of the oldest cached FPL data used to build this response. */
+    val dataAge: Long = 0
 )
 
 data class TeamLiveStanding(
@@ -203,7 +213,11 @@ data class EntryLiveResponse(
     val liveOverallRankEstimate: Long? = null,
     val liveOverallEstimateAvailable: Boolean = false,
     val liveOverallSampleAgeSeconds: Long? = null,
-    val liveOverallSampleCount: Int? = null
+    val liveOverallSampleCount: Int? = null,
+    /** True when some FPL data behind this response was served from cache because FPL failed. */
+    val stale: Boolean = false,
+    /** Age in seconds of the oldest cached FPL data used to build this response. */
+    val dataAge: Long = 0
 )
 
 data class FixtureView(
@@ -327,7 +341,11 @@ data class LiveBoardResponse(
     val live: Boolean,
     val fixtures: List<FixtureView> = emptyList(),
     val estimateNote: String,
-    val players: List<LiveBoardPlayer>
+    val players: List<LiveBoardPlayer>,
+    /** True when some FPL data behind this response was served from cache because FPL failed. */
+    val stale: Boolean = false,
+    /** Age in seconds of the oldest cached FPL data used to build this response. */
+    val dataAge: Long = 0
 )
 
 data class LiveBoardPlayer(
