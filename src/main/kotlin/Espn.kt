@@ -189,7 +189,7 @@ val FPL_TO_ESPN_TEAM = mapOf(
     "Birmingham" to "Birmingham City"
 )
 
-fun fplTeamKeys(name: String, shortName: String? = null): Set<String> {
+fun fplTeamKeys(name: String): Set<String> {
     val keys = mutableSetOf(normalizeName(name))
     FPL_TO_ESPN_TEAM[name]?.let { keys += normalizeName(it) }
     return keys.filter { it.isNotBlank() }.toSet()
@@ -337,7 +337,7 @@ private fun JsonObject.num(key: String): Double? =
 
 private val SCORE_IN_TEXT = Regex("""([^,!.]+?) (\d+), ([^,!.]+?) (\d+)\.""")
 
-fun timelineType(espnType: String, text: String?): String? {
+fun timelineType(espnType: String): String? {
     val t = espnType.lowercase()
     return when {
         t.contains("own-goal") || t.contains("own goal") -> "own_goal"
@@ -368,7 +368,7 @@ fun parseTimeline(
     for (ev in summary.arr("keyEvents").mapNotNull { it as? JsonObject }) {
         val espnType = ev.obj("type").str("type") ?: continue
         val text = ev.str("text")
-        val type = timelineType(espnType, text) ?: continue
+        val type = timelineType(espnType) ?: continue
         if (type == "ft" && !finished) continue
         val minute = ev.obj("clock").str("displayValue").orEmpty()
         val teamId = (ev["team"] as? JsonObject)?.str("id")

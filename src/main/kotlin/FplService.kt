@@ -615,7 +615,7 @@ class FplService(
             } catch (_: TimeoutException) {
                 future.cancel(true)
                 Freshness.stale(0)
-                officialOnly(standing, snapshot.gameweek)
+                officialOnly(standing)
             } catch (e: ExecutionException) {
                 throw e.cause ?: e
             }
@@ -623,7 +623,7 @@ class FplService(
     }
 
     /** Fallback row when a team's live evaluation didn't finish in time: FPL's own league numbers. */
-    private fun officialOnly(standing: StandingRow, gameweek: Int): TeamLiveStanding = TeamLiveStanding(
+    private fun officialOnly(standing: StandingRow): TeamLiveStanding = TeamLiveStanding(
         rank = standing.rank,
         entryId = standing.entryId,
         entryName = standing.entryName,

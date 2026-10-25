@@ -269,7 +269,7 @@ class RetryingGetTest {
     fun `no retry when the deadline leaves no room`() {
         var calls = 0
         assertFailsWith<IOException> {
-            getter({ _, t -> calls += 1; now += 9_500; throw IOException("slow fail") }).get("u")
+            getter({ _, _ -> calls += 1; now += 9_500; throw IOException("slow fail") }).get("u")
         }
         assertEquals(1, calls)
         assertTrue(sleeps.isEmpty())
