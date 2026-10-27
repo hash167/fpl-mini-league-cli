@@ -153,6 +153,14 @@ class FplService(
         ) ?: throw FplApiException("Player $elementId not found", 404)
     }
 
+    /** True when [gameweek] is the current (latest) one; past gameweeks keep their deadline value. */
+    private fun isLatestGameweek(gameweek: Int): Boolean = try {
+        val current = currentGameweekId(api.bootstrap())
+        current != null && gameweek >= current
+    } catch (_: Exception) {
+        false
+    }
+
     fun currentGameweek(): Int {
         return currentGameweekId(api.bootstrap())
             ?: throw IllegalStateException("Could not determine current gameweek from FPL bootstrap data.")
@@ -331,7 +339,13 @@ class FplService(
             overallRank = resolveOverallRank(history.overallRank, profileJson, gameweek),
             overallRankLabel = "official",
             startOfGwOverallRank = startRank,
-            teamValue = tenthsToMillions(history.value),
+            teamValue = resolveTeamValue(
+                picks = event.picks,
+                players = snapshot.players,
+                bankTenths = history.bank ?: profileJson.int("last_deadline_bank"),
+                deadlineValueTenths = history.value,
+                useCurrentPrices = isLatestGameweek(gameweek)
+            ),
             bank = tenthsToMillions(history.bank),
             freeTransfers = null,
             activeChip = chipLabel(event.activeChip),
@@ -718,7 +732,13 @@ class FplService(
             overallRankLabel = "official",
             startOfGwOverallRank = startRank,
             freeTransfers = null,
-            teamValue = tenthsToMillions(history.value),
+            teamValue = resolveTeamValue(
+                picks = event.picks,
+                players = snapshot.players,
+                bankTenths = history.bank ?: profileJson.int("last_deadline_bank"),
+                deadlineValueTenths = history.value ?: profileJson.int("last_deadline_value"),
+                useCurrentPrices = isLatestGameweek(snapshot.gameweek)
+            ),
             bank = tenthsToMillions(history.bank),
             activeChip = chipLabel(event.activeChip),
             projectedBonus = squad.projectedBonus,
