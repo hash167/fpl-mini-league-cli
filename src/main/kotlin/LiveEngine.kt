@@ -526,3 +526,30 @@ fun autoSubViews(applied: List<AppliedSub>, official: List<AppliedSub>, players:
         )
     }
 }
+
+/**
+ * Team value at CURRENT prices, as the official FPL site shows it: the sum of bootstrap-static
+ * now_cost over the 15 picks plus the bank, in tenths of a million. Returns null (so callers
+ * fall back to FPL's deadline value) when the squad is incomplete, the bank is unknown, or any
+ * pick is missing a current price.
+ */
+fun currentTeamValueTenths(picks: List<PickRow>, players: Map<Int, PlayerInfo>, bankTenths: Int?): Int? {
+    if (bankTenths == null) return null
+    val elements = picks.map { it.element }.distinct()
+    if (elements.size != 15) return null
+    var sum = 0
+    for (id in elements) sum += players[id]?.nowCost ?: return null
+    return sum + bankTenths
+}
+
+/** Current-price team value in £m, falling back to FPL's deadline value (also tenths). */
+fun resolveTeamValue(
+    picks: List<PickRow>,
+    players: Map<Int, PlayerInfo>,
+    bankTenths: Int?,
+    deadlineValueTenths: Int?,
+    useCurrentPrices: Boolean = true
+): Double? {
+    val current = if (useCurrentPrices) currentTeamValueTenths(picks, players, bankTenths) else null
+    return tenthsToMillions(current ?: deadlineValueTenths)
+}
