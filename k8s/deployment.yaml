@@ -23,7 +23,8 @@ spec:
         fsGroup: 65534
       containers:
         - name: fpl-web
-          image: docker.io/library/fpl-web:1.44
+          # Image already running. The digest pin is not a rollout by itself; do not apply until reviewed.
+          image: docker.io/library/fpl-web:1.45@sha256:1f904491da88d4a2f846a8c94d995615d109af2960136711634921c503f87369
           imagePullPolicy: IfNotPresent
           ports:
             - name: http
