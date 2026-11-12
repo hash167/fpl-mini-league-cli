@@ -120,6 +120,18 @@ docker run --rm -p 8080:8080 fpl-web:1.3
 
 The runtime stage adds the OpenTelemetry Java agent and uses `docker/entrypoint.sh`, which enables the agent only when `HONEYCOMB_API_KEY` is set.
 
+## GitHub Container Registry
+
+`.github/workflows/image.yml` builds this Dockerfile on every push to `master` and on `workflow_dispatch`, and pushes one immutable tag:
+
+`ghcr.io/hash167/fpl-web:<full git sha>`
+
+Pull requests run the same build with `push: false`. The workflow does not deploy, does not call the Kubernetes API, and does not store a kubeconfig.
+
+Only this image is published. The CronJobs use upstream `busybox:1.36` and `python:3.12-alpine`, which are not built here. `./gradlew shadowJar` runs inside the Dockerfile, so CI does not expect a JAR built on the runner.
+
+GitHub creates the package as private. To let k3s pull it with no secret, open the package and change its visibility to public. To keep it private, create an image pull secret from a GitHub token with `read:packages` and set `imagePullSecrets` on the pod. Pointing `k8s/deployment.yaml` at `ghcr.io/hash167/fpl-web:<sha>` instead of the locally imported `docker.io/library/fpl-web` tag is a separate step.
+
 ## Deploy to k3s
 
 Manifests live in `k8s/`. They create namespace `fpl`, one replica, and a NodePort **30810 → 8080**. They do not touch `movie-api`.
